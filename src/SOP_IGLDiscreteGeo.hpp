@@ -4,12 +4,11 @@
 #include <GA/GA_Range.h>
 #include <GA/GA_PageIterator.h>
 #include <GA/GA_PageHandle.h>
-
 #include <SOP/SOP_Node.h>
-
 
 #include <time.h>
 
+#include "converters.hpp"
 
 namespace SOP_IGL {
 
@@ -36,55 +35,60 @@ class Timer
 };
 
 
-void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::MatrixXi &faces)
+void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, const int false_colors=0)
 {
-  GA_Offset ptoff;
-  GA_FOR_ALL_PTOFF(&gdp, ptoff)
-  {
-      const UT_Vector3 pos = gdp.getPos3(ptoff);
-      points(static_cast<uint>(ptoff), 0) = pos.x();
-      points(static_cast<uint>(ptoff), 1) = pos.y(); 
-      points(static_cast<uint>(ptoff), 2) = pos.z();
-  }
+    // Alternative discrete mean curvature
+    Eigen::MatrixXd HN;
+    Eigen::SparseMatrix<double> L,M,Minv;
+    igl::cotmatrix(V,F,L);
+    igl::massmatrix(V,F,igl::MASSMATRIX_TYPE_VORONOI,M);
+    igl::invert_diag(M,Minv);
+    // Laplace-Beltrami of position
+    HN = -Minv*(L*V);
+    // Extract magnitude as mean curvature
+    Eigen::VectorXd H = HN.rowwise().norm();
 
-  GA_Iterator it(gdp.getPrimitiveRange());
-  for (; !it.atEnd(); ++it) {
-        const GEO_Primitive *prim = gdp.getGEOPrimitive(*it);
-        GA_Primitive::const_iterator vt;
-        int vertex_index = 0;
-        for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
-            const GA_Offset voff = vt.getPointOffset();
-            faces(prim->getMapIndex(), SYSmin(vertex_index, 2)) = static_cast<int>(voff);
-            vertex_index++;
+    // Compute curvature directions via quadric fitting
+    Eigen::MatrixXd PD1,PD2;
+    Eigen::VectorXd PV1,PV2;
+    igl::principal_curvature(V,F,PD1,PD2,PV1,PV2);
+    // mean curvature
+    H = 0.5*(PV1+PV2);
+   
+
+    GA_RWHandleF      curvature_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "curvature", 1));
+    GA_RWHandleV3     tangentu_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "tangentu", 3));
+    GA_RWHandleV3     tangentv_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "tangentv", 3));
+
+    GA_Offset ptoff;
+    if (curvature_h.isValid() && tangentu_h.isValid() && tangentv_h.isValid()) {
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            const GA_Index ptidx = gdp->pointIndex(ptoff);
+            UT_ASSERT((uint)ptidx < H.rows());
+            UT_ASSERT((uint)ptidx < PD1.rows());
+            UT_ASSERT((uint)ptidx < PD2.rows());
+            const float curv = H((uint)ptidx, 0);
+            const UT_Vector3 tnu(PD1((uint)ptidx, 0), PD1((uint)ptidx, 1), PD1((uint)ptidx, 2));
+            const UT_Vector3 tnv(PD2((uint)ptidx, 0), PD2((uint)ptidx, 1), PD2((uint)ptidx, 2));
+            curvature_h.set(ptoff, curv);
+            tangentu_h.set(ptoff, tnu);
+            tangentv_h.set(ptoff, tnv);
         }
     }
 
+    if (false_colors) {
+        // Pseudo Colors:
+        Eigen::MatrixXd C;
+        igl::parula(H,true,C);
+        GA_RWHandleV3   color_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "Cd", 3));
+        GA_FOR_ALL_PTOFF(gdp, ptoff) { 
+            const GA_Index ptidx = gdp->pointIndex(ptoff);  
+            UT_ASSERT((uint)ptidx < C.rows());
+            const UT_Vector3 cd(C((uint)ptidx, 0), C((uint)ptidx, 1), C((uint)ptidx, 2));
+            color_h.set(ptoff, cd);
+        }
+    }
 }
-
-void eigen_to_detail(const Eigen::MatrixXd &points, const Eigen::MatrixXi &faces, GU_Detail &gdp)
-{
-
-  GA_Offset ptoff;
-  UT_Vector3 pos; 
-  gdp.appendPointBlock((GA_Size)points.rows());
-  GA_FOR_ALL_PTOFF(&gdp, ptoff)
-  {
-      pos.x() = points(static_cast<uint>(ptoff), 0);
-      pos.y() = points(static_cast<uint>(ptoff), 1); 
-      pos.z() = points(static_cast<uint>(ptoff), 2);
-      gdp.setPos3(ptoff, pos);
-  }
-
-  // TODO: optimize!
-  for (uint i = 0; i < faces.rows(); ++i) {
-    GU_PrimPoly *prim = GU_PrimPoly::build(&gdp, 0, false, false);
-    prim->appendVertex((GA_Index)faces(i, 0));
-    prim->appendVertex((GA_Index)faces(i, 1));
-    prim->appendVertex((GA_Index)faces(i, 2)); 
-  }
-
-}
-
 
 class SOP_IGLDiscreteGeometry : public SOP_Node
 {
@@ -107,15 +111,17 @@ protected:
     virtual OP_ERROR         cookMySop(OP_Context &context);
 
 private:
-    void    getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
-    void    MODEL(UT_String &str)    { evalString(str, "model", 0, 0); }
-    void    TERM(UT_String &str)     { evalString(str, "term", 0, 0); }
-    fpreal  QCOEF(fpreal t)          { return evalFloat("qcoef", 0, t); }
-    fpreal  ZCOEF(fpreal t)           { return evalFloat("zcoef", 0, t); }
-    fpreal  RADIUS(fpreal t)    { return evalFloat("radius", 0, t); }
-    int     LAYERS(fpreal t)    { return evalInt("layers", 0, t); }
-    fpreal  LAMBDA(fpreal t)    { return evalFloat("lambda", 0, t); }
-    int     TANGENT(fpreal t)   { return evalInt("tangent", 0, t); }
+    void    getGroups(UT_String &str)        { evalString(str, "group", 0, 0); }
+    int     CURVATURE(fpreal t)              { return evalInt("curvature", 0, t); }
+    int     FALSE_CURVE_COLORS(fpreal t)     { return evalInt("false_curve_colors", 0, t); }
+    int     GRAD_ATTRIB(fpreal t)            { return evalInt("grad_attrib", 0, t); }
+    void    GRAD_ATTRIB_NAME(UT_String &str) { evalString(str,"grad_attrib_name", 0, 0); }
+    // fpreal  QCOEF(fpreal t)          { return evalFloat("qcoef", 0, t); }
+    // fpreal  ZCOEF(fpreal t)           { return evalFloat("zcoef", 0, t); }
+    // fpreal  RADIUS(fpreal t)    { return evalFloat("radius", 0, t); }
+    // int     LAYERS(fpreal t)    { return evalInt("layers", 0, t); }
+    // fpreal  LAMBDA(fpreal t)    { return evalFloat("lambda", 0, t); }
+    // int     TANGENT(fpreal t)   { return evalInt("tangent", 0, t); }
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".

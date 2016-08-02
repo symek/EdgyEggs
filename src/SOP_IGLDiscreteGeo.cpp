@@ -1,7 +1,16 @@
+#include <igl/avg_edge_length.h>
 #include <igl/cotmatrix.h>
+#include <igl/invert_diag.h>
+#include <igl/massmatrix.h>
+#include <igl/parula.h>
+#include <igl/per_corner_normals.h>
+#include <igl/per_face_normals.h>
+#include <igl/per_vertex_normals.h>
+#include <igl/principal_curvature.h>
+#include <igl/read_triangle_mesh.h>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include <iostream>
+
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
 
@@ -16,10 +25,11 @@
 #include <UT/UT_Matrix3.h>
 #include <UT/UT_Matrix4.h>
 #include <SYS/SYS_Math.h>
-#include <stddef.h>
 
 
 // #include "stdafx.h"
+#include <stddef.h>
+#include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -35,8 +45,8 @@ newSopOperator(OP_OperatorTable *table)
         "IGL Discrete Geometry Operator",
         SOP_IGLDiscreteGeometry::myConstructor,
         SOP_IGLDiscreteGeometry::myTemplateList,
-        3,
-        3,
+        1,
+        1,
         0));
 }
 
@@ -61,9 +71,10 @@ static PRM_ChoiceList  termMenu(PRM_CHOICELIST_SINGLE,  termChoices);
 static PRM_Range       radiusRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
 
 static PRM_Name names[] = {
-    PRM_Name("model",   "Model"),
-    PRM_Name("term",    "RBF Term"),
-    PRM_Name("qcoef",   "Q (Smoothness)"),
+    PRM_Name("curvature",          "Add Principal Curvature"),
+    PRM_Name("false_curve_colors", "Add False Curve Colors"),
+    PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
+    PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
     PRM_Name("zcoef",   "Z (Deviation)"),
     PRM_Name("radius",  "Radius"),
     PRM_Name("layers",  "Layers"),
@@ -71,18 +82,22 @@ static PRM_Name names[] = {
     PRM_Name("tangent", "Tangent space"),
 };
 
+
+
 PRM_Template
 SOP_IGLDiscreteGeometry::myTemplateList[] = {
-    PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu, 0, 0, \
-        SOP_Node::getGroupSelectButton(GA_GROUP_POINT)),
-    PRM_Template(PRM_ORD,   1, &names[0], 0, &modelMenu, 0, 0),
-    PRM_Template(PRM_ORD,   1, &names[1], 0, &termMenu, 0, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[2], PRMoneDefaults),
-    PRM_Template(PRM_FLT_J, 1, &names[3], PRMfiveDefaults),
-    PRM_Template(PRM_FLT_J,	1, &names[4], PRMoneDefaults, 0, &radiusRange),
-    PRM_Template(PRM_INT_J,	1, &names[5], PRMfourDefaults),
-    PRM_Template(PRM_FLT_J,	1, &names[6], PRMpointOneDefaults),
-    PRM_Template(PRM_TOGGLE,1, &names[7], PRMzeroDefaults),
+    // PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu, 0, 0, SOP_Node::getGroupSelectButton(GA_GROUP_POINT)),
+    PRM_Template(PRM_TOGGLE, 1, &names[0],  PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[1],  PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[2],  PRMzeroDefaults),
+    PRM_Template(PRM_STRING, 1, &names[3], 0),
+    // PRM_Template(PRM_ORD,   1, &names[1], 0, &termMenu, 0, 0),
+    // PRM_Template(PRM_FLT_J, 1, &names[2], PRMoneDefaults),
+    // PRM_Template(PRM_FLT_J, 1, &names[3], PRMfiveDefaults),
+    // PRM_Template(PRM_FLT_J,	1, &names[4], PRMoneDefaults, 0, &radiusRange),
+    // PRM_Template(PRM_INT_J,	1, &names[5], PRMfourDefaults),
+    // PRM_Template(PRM_FLT_J,	1, &names[6], PRMpointOneDefaults),
+    // PRM_Template(PRM_TOGGLE,1, &names[7], PRMzeroDefaults),
     PRM_Template(),
 };
 
@@ -132,50 +147,62 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         return error();
 
     fpreal t = context.getTime();
-    duplicatePointSource(0, context);
+    duplicateSource(0, context);
 
-    // Get rest and deform geometry:
-    // const GU_Detail *rest_gdp   = inputGeo(1);
-    // const GU_Detail *deform_gdp = inputGeo(2);
+    gdp->convex(); // only triangles for now.
+    uint numPoints = gdp->getNumPoints();
+    uint numPrims  = gdp->getNumPrimitives();
+    Eigen::MatrixXd V(numPoints, 3); // points
+    Eigen::MatrixXi F(numPrims, 3); // faces
 
-    // Point count should match:
-    // if (rest_gdp->getNumPoints() != deform_gdp->getNumPoints())
-    // {
-    //     addError(SOP_ERR_MISMATCH_POINT, "Rest and deform geometry should match.");
-    //     return error();
-    // }
+    SOP_IGL::detail_to_eigen(*gdp, V, F);
 
-    // #ifdef DEBUG
-    //     Timer timer;
-    //     timer.start();
-    // #endif
 
-    // alglib::real_2d_array rbf_data_model;
-    // int numpoints = rest_gdp->getNumPoints();
-    // rbf_data_model.setlength(numpoints, 6);
+    if(CURVATURE(t)) {
+        compute_curvature(gdp, V, F, FALSE_CURVE_COLORS(t));
+    }
 
-    // #ifdef DEBUG
-    //     std::cout << "Storage allocated: " << timer.current() << std::endl;
-    // #endif
 
-    // Construct model data:
-    // GA_Offset ptoff;
-    // {   
-    //     GA_FOR_ALL_PTOFF(rest_gdp, ptoff)
-    //     {
-    //         const UT_Vector3 restP   = rest_gdp->getPos3(ptoff);
-    //         const UT_Vector3 deformP = deform_gdp->getPos3(ptoff);
-    //         const UT_Vector3 delta   = UT_Vector3(deformP - restP);
-    //         double data[6] = {restP.x(), restP.y(), restP.z(), delta.x(), delta.y(), delta.z()};
-    //         // FIXME: It seems that for some types of prims (NURBS?) getNumPoints()
-    //         // is lower than last ptoff, so this crashes Houdini (I should not use ptoff then?)
-    //         if (static_cast<uint>(ptoff) < numpoints)
-    //         {
-    //             for (int i=0; i<6; ++i)
-    //                 rbf_data_model[static_cast<uint>(ptoff)][i] = data[i]; 
-    //         }
-    //     }
-    // }
+    if (GRAD_ATTRIB(t)) {
+
+        // Fetch our attribute names
+        UT_String gradattribname;
+        GRAD_ATTRIB_NAME(gradattribname, t);
+
+        if (!gradattribname.isstring())
+            return error();
+      
+        gradattribname.forceValidVariableName();
+        GA_ROHandleF  gradattrib_h(gdp->findAttribute(GA_ATTRIB_POINT, gradattribname));
+        GA_Offset ptoff;
+        if (gradattrib_h.isValid()) {
+            Eigen::VectorXd U(numPoints);
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                const float val      = gradattrib_h.get(ptoff);
+                const GA_Index ptidx = gdp->pointIndex(ptoff);
+                U((uint)ptidx) = val;
+            }
+
+            // Compute gradient operator: #F*3 by #V
+              Eigen::SparseMatrix<double> G;
+              igl::grad(V,F,G);
+
+              // Compute gradient of U
+              Eigen::MatrixXd GU = Eigen::Map<const MatrixXd>((G*U).eval().data(),F.rows(),3);
+              // Compute gradient magnitude
+              const Eigen::VectorXd GU_mag = GU.rowwise().norm();
+            
+        }
+       
+
+    }
+
+
+
+
+
+
+  
 
     // #if 1
 
