@@ -30,7 +30,6 @@ static PRM_Name names[] = {
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
     PRM_Name("laplacian",          "Laplacian (Smoothing)"),
     PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
-    PRM_Name("arapparam",          "ARAP Parameterization (UV Projection)"),
 };
 
 
