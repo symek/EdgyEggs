@@ -5,6 +5,7 @@
 #include <GA/GA_PageIterator.h>
 #include <GA/GA_PageHandle.h>
 #include <SOP/SOP_Node.h>
+#include <UT/UT_Interrupt.h>
 
 #include <time.h>
 
@@ -113,7 +114,7 @@ void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::M
 
     // Copy attributes to Houdini
     { 
-        GA_RWHandleV3  gradAttrib_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "gradient", 3));
+        GA_RWHandleV3  gradAttrib_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "gradientAttrib", 3));
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff) { 
             const GA_Index ptidx = gdp->pointIndex(ptoff);  
@@ -122,10 +123,28 @@ void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::M
             UT_Vector3 grad(GU((uint)ptidx, 0),  GU((uint)ptidx, 1), GU((uint)ptidx, 2));
             const float gmag = GU_mag((uint)ptidx, 0);
             grad *= gmag;
+            grad.normalize();//?
             gradAttrib_h.set(ptoff, grad);
         }
     }
 }
+
+int compute_laplacian(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, 
+                      const Eigen::SparseMatrix<double> &L, Eigen::MatrixXd &U)
+{
+    Eigen::SparseMatrix<double> M;
+    igl::massmatrix(U,F,igl::MASSMATRIX_TYPE_BARYCENTRIC, M);
+
+    // Solve (M-delta*L) U = M*U
+    const auto & S = (M - 0.001*L);
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double > > solver(S);
+
+    if(solver.info() != Eigen::Success)
+      return solver.info();
+    U = solver.solve(M*U).eval();
+    return Eigen::Success;
+}
+
 
 class SOP_IGLDiscreteGeometry : public SOP_Node
 {
