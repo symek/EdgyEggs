@@ -3,11 +3,16 @@
 #include <igl/invert_diag.h>
 #include <igl/massmatrix.h>
 #include <igl/parula.h>
+
+#include <igl/barycenter.h>
+#include <igl/grad.h>
+#include <igl/jet.h>
+
 #include <igl/per_corner_normals.h>
 #include <igl/per_face_normals.h>
 #include <igl/per_vertex_normals.h>
 #include <igl/principal_curvature.h>
-#include <igl/read_triangle_mesh.h>
+
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -75,7 +80,7 @@ static PRM_Name names[] = {
     PRM_Name("false_curve_colors", "Add False Curve Colors"),
     PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
-    PRM_Name("zcoef",   "Z (Deviation)"),
+    PRM_Name("laplacian",   "Laplacian (Smoothing)"),
     PRM_Name("radius",  "Radius"),
     PRM_Name("layers",  "Layers"),
     PRM_Name("lambda",  "Lambda"),
@@ -91,12 +96,13 @@ SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE, 1, &names[1],  PRMzeroDefaults),
     PRM_Template(PRM_TOGGLE, 1, &names[2],  PRMzeroDefaults),
     PRM_Template(PRM_STRING, 1, &names[3], 0),
+    PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults),
     // PRM_Template(PRM_ORD,   1, &names[1], 0, &termMenu, 0, 0),
     // PRM_Template(PRM_FLT_J, 1, &names[2], PRMoneDefaults),
     // PRM_Template(PRM_FLT_J, 1, &names[3], PRMfiveDefaults),
-    // PRM_Template(PRM_FLT_J,	1, &names[4], PRMoneDefaults, 0, &radiusRange),
-    // PRM_Template(PRM_INT_J,	1, &names[5], PRMfourDefaults),
-    // PRM_Template(PRM_FLT_J,	1, &names[6], PRMpointOneDefaults),
+    // PRM_Template(PRM_FLT_J,  1, &names[4], PRMoneDefaults, 0, &radiusRange),
+    // PRM_Template(PRM_INT_J,  1, &names[5], PRMfourDefaults),
+    // PRM_Template(PRM_FLT_J,  1, &names[6], PRMpointOneDefaults),
     // PRM_Template(PRM_TOGGLE,1, &names[7], PRMzeroDefaults),
     PRM_Template(),
 };
@@ -166,38 +172,89 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
     if (GRAD_ATTRIB(t)) {
 
         // Fetch our attribute names
-        UT_String gradattribname;
-        GRAD_ATTRIB_NAME(gradattribname, t);
+        UT_String sourceGradAttribName;
+        GRAD_ATTRIB_NAME(sourceGradAttribName);
 
-        if (!gradattribname.isstring())
+        if (!sourceGradAttribName.isstring())
             return error();
       
-        gradattribname.forceValidVariableName();
-        GA_ROHandleF  gradattrib_h(gdp->findAttribute(GA_ATTRIB_POINT, gradattribname));
-        GA_Offset ptoff;
-        if (gradattrib_h.isValid()) {
-            Eigen::VectorXd U(numPoints);
-            GA_FOR_ALL_PTOFF(gdp, ptoff) {
-                const float val      = gradattrib_h.get(ptoff);
-                const GA_Index ptidx = gdp->pointIndex(ptoff);
-                U((uint)ptidx) = val;
-            }
-
-            // Compute gradient operator: #F*3 by #V
-              Eigen::SparseMatrix<double> G;
-              igl::grad(V,F,G);
-
-              // Compute gradient of U
-              Eigen::MatrixXd GU = Eigen::Map<const MatrixXd>((G*U).eval().data(),F.rows(),3);
-              // Compute gradient magnitude
-              const Eigen::VectorXd GU_mag = GU.rowwise().norm();
-            
+        // Make sure a name is valid.
+        sourceGradAttribName.forceValidVariableName();
+        GA_ROHandleF  sourceGradAttrib_h(gdp->findAttribute(GA_ATTRIB_POINT, sourceGradAttribName));
+        if (sourceGradAttrib_h.isValid()) {
+            compute_gradient(gdp, sourceGradAttrib_h, V, F);
+        } else {
+            addWarning(SOP_MESSAGE, "Can't compute a gradient from a given attribute.");
         }
-       
-
     }
 
+    const int laplacian = LAPLACIAN(t);
+    if (laplacian != 0) {
+        //
 
+
+        // TODO: timeit!
+        #if 1
+        Eigen::SparseMatrix<double> L;
+        // Compute Laplace-Beltrami operator: #V by #V
+        igl::cotmatrix(V,F,L);
+        #else
+
+        // Alternative construction of same Laplacian
+        SparseMatrix<double> G,K;
+        // Gradient/Divergence
+        igl::grad(V,F,G);
+        // Diagonal per-triangle "mass matrix"
+        VectorXd dblA;
+        igl::doublearea(V,F,dblA);
+        // Place areas along diagonal #dim times
+        const auto & T = 1.*(dblA.replicate(3,1)*0.5).asDiagonal();
+        // Laplacian K built as discrete divergence of gradient or equivalently
+        // discrete Dirichelet energy Hessian
+        K = -G.transpose() * T * G;
+        L = K;
+        #endif
+
+        // Smoothing:
+        Eigen::MatrixXd U;
+        for (uint i=0; i<laplacian; ++i) {
+            Eigen::SparseMatrix<double> M;
+            igl::massmatrix(U,F,igl::MASSMATRIX_TYPE_BARYCENTRIC, M);
+            // Solve (M-delta*L) U = M*U
+            const auto & S = (M - 0.001*L);
+            Eigen::SimplicialLLT<Eigen::SparseMatrix<double > > solver(S);
+            assert(solver.info() == Eigen::Success);
+            U = solver.solve(M*U).eval();
+            // Compute centroid and subtract (also important for numerics)
+            Eigen::VectorXd dblA;
+            igl::doublearea(U,F,dblA);
+            double area = 0.5*dblA.sum();
+            Eigen::MatrixXd BC;
+            igl::barycenter(U, F, BC);
+            Eigen::RowVector3d centroid(0,0,0);
+            for(int i = 0; i<BC.rows(); i++) {
+                centroid += 0.5*dblA(i)/area*BC.row(i);
+            }
+            U.rowwise() -= centroid;
+            // Normalize to unit surface area (important for numerics)
+            U.array() /= sqrt(area);
+        }
+
+        // Copy to Houdini:
+        {
+            GA_RWHandleV3 p_h(gdp->getP());
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                const GA_Index ptidx = gdp->pointIndex(ptoff);
+                if ((uint)ptidx < U.rows()) {
+                    const UT_Vector3 pos(U((uint)ptidx, 0),U((uint)ptidx, 1), U((uint)ptidx, 2));
+                    p_h.set(ptoff, pos);
+                }
+
+            }
+        }
+
+    }
 
 
 

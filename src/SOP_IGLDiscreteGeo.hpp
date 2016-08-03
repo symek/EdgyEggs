@@ -90,6 +90,43 @@ void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, c
     }
 }
 
+void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::MatrixXd &V, Eigen::MatrixXi &F)
+{
+    const uint numPoints = gdp->getNumPoints();
+    Eigen::VectorXd U(numPoints);
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(gdp, ptoff) {
+        const float val      = sourceAttrib.get(ptoff);
+        const GA_Index ptidx = gdp->pointIndex(ptoff);
+        U((uint)ptidx) = val;
+    }
+
+    // Compute gradient operator: #F*3 by #V
+    Eigen::SparseMatrix<double> G;
+    igl::grad(V,F,G);
+
+    // Compute gradient of U
+    Eigen::MatrixXd GU = Eigen::Map<const Eigen::MatrixXd>((G*U).eval().data(),F.rows(),3);
+    // Compute gradient magnitude
+    const Eigen::VectorXd GU_mag = GU.rowwise().norm();
+
+
+    // Copy attributes to Houdini
+    { 
+        GA_RWHandleV3  gradAttrib_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "gradient", 3));
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) { 
+            const GA_Index ptidx = gdp->pointIndex(ptoff);  
+            UT_ASSERT((uint)ptidx < GU_mag.rows());
+            UT_ASSERT((uint)ptidx < GU.rows());
+            UT_Vector3 grad(GU((uint)ptidx, 0),  GU((uint)ptidx, 1), GU((uint)ptidx, 2));
+            const float gmag = GU_mag((uint)ptidx, 0);
+            grad *= gmag;
+            gradAttrib_h.set(ptoff, grad);
+        }
+    }
+}
+
 class SOP_IGLDiscreteGeometry : public SOP_Node
 {
 public:
@@ -116,6 +153,7 @@ private:
     int     FALSE_CURVE_COLORS(fpreal t)     { return evalInt("false_curve_colors", 0, t); }
     int     GRAD_ATTRIB(fpreal t)            { return evalInt("grad_attrib", 0, t); }
     void    GRAD_ATTRIB_NAME(UT_String &str) { evalString(str,"grad_attrib_name", 0, 0); }
+    fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t); }
     // fpreal  QCOEF(fpreal t)          { return evalFloat("qcoef", 0, t); }
     // fpreal  ZCOEF(fpreal t)           { return evalFloat("zcoef", 0, t); }
     // fpreal  RADIUS(fpreal t)    { return evalFloat("radius", 0, t); }
