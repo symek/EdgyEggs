@@ -61,18 +61,20 @@ static PRM_Name names[] = {
     PRM_Name("false_curve_colors", "Add False Curve Colors"),
     PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
-    PRM_Name("laplacian",           "Laplacian (Smoothing)"),
+    PRM_Name("laplacian",          "Laplacian (Smoothing)"),
+    PRM_Name("eigenvectors",       "Eigen Decomposition"),
 };
 
 
 
 PRM_Template
 SOP_IGLDiscreteGeometry::myTemplateList[] = {
-    PRM_Template(PRM_TOGGLE, 1, &names[0],  PRMzeroDefaults),
-    PRM_Template(PRM_TOGGLE, 1, &names[1],  PRMzeroDefaults),
-    PRM_Template(PRM_TOGGLE, 1, &names[2],  PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[0], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[2], PRMzeroDefaults),
     PRM_Template(PRM_STRING, 1, &names[3], 0),
     PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[5], PRMzeroDefaults),
     PRM_Template(),
 };
 
@@ -201,7 +203,43 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
             }
         }
     }
-        
+    
+    // FIXME: igs reports error here: gs::eigs(L, M, k+1, igs::EIGS_TYPE_SM, U, D)
+    #if 0 
+     /*  Eigen decompositon*/
+    if (EIGENVECTORS(t)) 
+    {
+        int c=0;
+        double bbd = 1;
+        bool twod = 0;
+  
+        twod = V.col(2).minCoeff() == V.col(2).maxCoeff();
+        bbd = (V.colwise().maxCoeff() - V.colwise().minCoeff()).norm();
+
+        Eigen::SparseMatrix<double> L, M;
+        igs::cotmatrix(V,F,L);
+        L = (-L).eval();
+
+        igs::massmatrix(V, F, igs::MASSMATRIX_TYPE_DEFAULT, M);
+
+        const size_t k = 5;
+        Eigen::VectorXd D;
+        if(!igs::eigs(L, M, k+1, igs::EIGS_TYPE_SM, U, D)) {
+             addWarning(SOP_MESSAGE, "Can't compute eigen decomposition.");
+            return error();
+        }
+
+        U = ((U.array()-U.minCoeff())/(U.maxCoeff()-U.minCoeff())).eval();
+
+        //....
+    }
+
+    #endif
+
+
+
+    
+
     gdp->getP()->bumpDataId();
     return error();
 }

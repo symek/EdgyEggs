@@ -172,7 +172,8 @@ private:
     int     FALSE_CURVE_COLORS(fpreal t)     { return evalInt("false_curve_colors", 0, t); }
     int     GRAD_ATTRIB(fpreal t)            { return evalInt("grad_attrib", 0, t); }
     void    GRAD_ATTRIB_NAME(UT_String &str) { evalString(str,"grad_attrib_name", 0, 0); }
-    fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t); }
+    fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t);  }
+    int     EIGENVECTORS(fpreal t)           { return evalInt("eigenvectors", 0, t); }
     // fpreal  QCOEF(fpreal t)          { return evalFloat("qcoef", 0, t); }
     // fpreal  ZCOEF(fpreal t)           { return evalFloat("zcoef", 0, t); }
     // fpreal  RADIUS(fpreal t)    { return evalFloat("radius", 0, t); }
