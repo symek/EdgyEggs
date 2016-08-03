@@ -1,28 +1,25 @@
-#include <igl/avg_edge_length.h>
 #include <igl/cotmatrix.h>
 #include <igl/invert_diag.h>
 #include <igl/massmatrix.h>
-#include <igl/parula.h>
-
-#include <igl/barycenter.h>
-#include <igl/grad.h>
-#include <igl/jet.h>
-
-#include <igl/per_corner_normals.h>
-#include <igl/per_face_normals.h>
-#include <igl/per_vertex_normals.h>
 #include <igl/principal_curvature.h>
+#include <igl/grad.h>
+#include <igl/parula.h>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include <GU/GU_Detail.h>
-#include <GU/GU_PrimPoly.h>
+// #include <igl/jet.h>
+// #include <igl/eigs.h>
+// #include <igl/barycenter.h>
+// #include <igl/avg_edge_length.h>
+// #include <igl/per_corner_normals.h>
+// #include <igl/per_face_normals.h>
+// #include <igl/per_vertex_normals.h>
 
-#include "SOP_IGLDiscreteGeo.hpp"
 
 #include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
+#include <GU/GU_PrimPoly.h>
 #include <OP/OP_Operator.h>
 #include <OP/OP_AutoLockInputs.h>
 #include <OP/OP_OperatorTable.h>
@@ -31,14 +28,7 @@
 #include <UT/UT_Matrix4.h>
 #include <SYS/SYS_Math.h>
 
-
-// #include "stdafx.h"
-#include <stddef.h>
-#include <iostream>
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
-
+#include "SOP_IGLDiscreteGeo.hpp"
 
 using namespace SOP_IGL;
 
@@ -47,7 +37,7 @@ newSopOperator(OP_OperatorTable *table)
 {
     table->addOperator(new OP_Operator(
         "IGLDiscreteGeo",
-        "IGL Discrete Geometry Operator",
+        "IGL Discrete Geometry",
         SOP_IGLDiscreteGeometry::myConstructor,
         SOP_IGLDiscreteGeometry::myTemplateList,
         1,
@@ -204,28 +194,21 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         }
     }
     
-    // FIXME: igs reports error here: gs::eigs(L, M, k+1, igs::EIGS_TYPE_SM, U, D)
-    #if 0 
+    // FIXME: igs reports error here: igl::eigs(L, M, k+1, igl::EIGS_TYPE_SM, U, D)
+    #if 0
      /*  Eigen decompositon*/
     if (EIGENVECTORS(t)) 
     {
-        int c=0;
-        double bbd = 1;
-        bool twod = 0;
-  
-        twod = V.col(2).minCoeff() == V.col(2).maxCoeff();
-        bbd = (V.colwise().maxCoeff() - V.colwise().minCoeff()).norm();
-
-        Eigen::SparseMatrix<double> L, M;
-        igs::cotmatrix(V,F,L);
+        igl::cotmatrix(V,F,L);
         L = (-L).eval();
 
-        igs::massmatrix(V, F, igs::MASSMATRIX_TYPE_DEFAULT, M);
+        igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_DEFAULT, M);
 
         const size_t k = 5;
         Eigen::VectorXd D;
-        if(!igs::eigs(L, M, k+1, igs::EIGS_TYPE_SM, U, D)) {
-             addWarning(SOP_MESSAGE, "Can't compute eigen decomposition.");
+        Eigen::MatrixXd U;
+        if(!igl::eigs(L, M, k+1, igl::EIGS_TYPE_SM, U, D)) {
+            addWarning(SOP_MESSAGE, "Can't compute eigen decomposition.");
             return error();
         }
 
