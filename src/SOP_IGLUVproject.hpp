@@ -34,7 +34,9 @@ protected:
 
 private:
     void    getGroups(UT_String &str)        { evalString(str, "group", 0, 0); }
-    int     ARAPPARAM(fpreal t)              { return evalInt("term", 0, t); }
+    int     TERM(fpreal t)                   { return evalInt("term", 0, t); }
+    int     MAXITER(fpreal t)                { return evalInt("maxiter", 0, t); }
+
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".

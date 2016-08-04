@@ -22,7 +22,8 @@
 using namespace SOP_IGL;
 
 static PRM_Name names[] = {
-    PRM_Name("term",  "UV Projection"),
+    PRM_Name("term",     "UV Projection"),
+    PRM_Name("maxiter",  "Max interations (ARAP)"),
 };
 
 static PRM_Name  termChoices[] =
@@ -32,11 +33,14 @@ static PRM_Name  termChoices[] =
     PRM_Name(0)
 };
 
+static PRM_Default     iterDefault(5);
 static PRM_ChoiceList  termMenu(PRM_CHOICELIST_SINGLE,  termChoices);
+static PRM_Range       maxiterRange(PRM_RANGE_PRM, 0, PRM_RANGE_UI, 25);
 
 PRM_Template
 SOP_IGLUVproject::myTemplateList[] = {
     PRM_Template(PRM_ORD,   1, &names[0], 0, &termMenu, 0, 0),
+    PRM_Template(PRM_INT_J, 1, &names[1], &iterDefault, 0, &maxiterRange),
     PRM_Template(),
 };
 
@@ -97,35 +101,70 @@ SOP_IGLUVproject::cookMySop(OP_Context &context)
 
     SOP_IGL::detail_to_eigen(*gdp, V, F);
 
-    Eigen::MatrixXd V_uv;
-    Eigen::MatrixXd initial_guess;
 
-    // Compute the initial solution for ARAP (harmonic parametrization)
-    Eigen::VectorXi bnd;
-    igl::boundary_loop(F,bnd);
-    Eigen::MatrixXd bnd_uv;
-    igl::map_vertices_to_circle(V,bnd,bnd_uv);
+    const int uvterm  = TERM(t);
+    const int maxiter = MAXITER(t);
 
-    // This won't compile again... (some changes in Eigen?)
-    #if 0
-    igl::harmonic(V,F,bnd,bnd_uv,1,initial_guess);
+    if (uvterm == 0)
+    {
+        Eigen::MatrixXd V_uv;
+        Eigen::MatrixXd initial_guess;
 
-    // Add dynamic regularization to avoid to specify boundary conditions
-    igl::ARAPData arap_data;
-    arap_data.with_dynamics = true;
-    Eigen::VectorXi b  = Eigen::VectorXi::Zero(0);
-    Eigen::MatrixXd bc = Eigen::MatrixXd::Zero(0,0);
+        // Compute the initial solution for ARAP (harmonic parametrization)
+        Eigen::VectorXi bnd;
+        igl::boundary_loop(F, bnd);
 
-    // Initialize ARAP
-    arap_data.max_iter = 100;
-    // 2 means that we're going to *solve* in 2d
-    arap_precomputation(V,F,2,b,arap_data);
+        if (bnd.rows() == 0) {
+            addWarning(SOP_MESSAGE, "No boundaries, can't proceed.");
+            return error();
+        }
 
+        Eigen::MatrixXd bnd_uv;
+        igl::map_vertices_to_circle(V, bnd, bnd_uv);
 
-    // Solve arap using the harmonic map as initial guess
-    V_uv = initial_guess;
+        // This won't compile with Eigen > 3.2.8
+        #if 1
 
-    arap_solve(bc,arap_data,V_uv);
+        if (!igl::harmonic(V,F,bnd,bnd_uv,1,initial_guess))
+        {
+            addWarning(SOP_MESSAGE, "Can't compute harmonics.");
+            return error();
+        }
+
+        // Add dynamic regularization to avoid to specify boundary conditions
+        igl::ARAPData arap_data;
+        arap_data.with_dynamics = true;
+        Eigen::VectorXi b  = Eigen::VectorXi::Zero(0);
+        Eigen::MatrixXd bc = Eigen::MatrixXd::Zero(0,0);
+
+        // Initialize ARAP
+        arap_data.max_iter = maxiter;
+        // 2 means that we're going to *solve* in 2d
+        if (!arap_precomputation(V,F,2,b,arap_data))
+        {
+            addWarning(SOP_MESSAGE, "Can't precompute ARAP.");
+            return error();
+        }
+
+        // Solve arap using the harmonic map as initial guess
+        V_uv = initial_guess;
+
+        if (!arap_solve(bc,arap_data,V_uv))
+        { 
+            addWarning(SOP_MESSAGE, "Can't solve ARAP.");
+            return error();
+        }
+
+        GA_RWHandleV3 uv_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "uv", 3));
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) 
+        { 
+            const GA_Index ptidx = gdp->pointIndex(ptoff);  
+            UT_ASSERT((uint)ptidx < V_uv.rows());
+            const UT_Vector3 uv(V_uv((uint)ptidx, 0), V_uv((uint)ptidx, 1), 0.f);
+            uv_h.set(ptoff, uv);
+        }
+    }
 
     // etc
     #endif
