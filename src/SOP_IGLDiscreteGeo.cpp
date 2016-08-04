@@ -32,7 +32,7 @@ static PRM_Name names[] = {
     PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
 };
 
-
+static PRM_Range  laplaceRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
 
 PRM_Template
 SOP_IGLDiscreteGeometry::myTemplateList[] = {
@@ -40,9 +40,8 @@ SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
     PRM_Template(PRM_TOGGLE, 1, &names[2], PRMzeroDefaults),
     PRM_Template(PRM_STRING, 1, &names[3], 0),
-    PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults),
+    PRM_Template(PRM_FLT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
     PRM_Template(PRM_TOGGLE, 1, &names[5], PRMzeroDefaults),
-    PRM_Template(PRM_TOGGLE, 1, &names[6], PRMzeroDefaults),
     PRM_Template(),
 };
 
@@ -243,10 +242,14 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
 
 
     /*    Laplacian smoothing   */
-    int laplacian_iterations = LAPLACIAN(t);
+    const float laplacian = LAPLACIAN(t);
 
-    if (laplacian_iterations != 0)
+    if (laplacian != 0)
     {
+        int laplacian_iterations = (int)ceil(laplacian);
+        float laplacian_ratio    = laplacian - floorf(laplacian);
+        laplacian_ratio = laplacian_ratio != 0.f ? laplacian_ratio : 1.f;
+
         // Start the interrupt server
         UT_AutoInterrupt boss("Laplacian smoothing...");
         Eigen::SparseMatrix<double> L;
@@ -254,6 +257,8 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         igl::cotmatrix(V,F,L);
         // Smoothing:
         Eigen::MatrixXd U; U = V;
+        Eigen::MatrixXd T;
+        T = Eigen::MatrixXd::Zero(V.rows(), V.cols());
 
         while(laplacian_iterations) 
         {
@@ -266,6 +271,12 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
                 return error();
             }
             laplacian_iterations--;
+
+            // if (laplacian_iterations > 0)
+            //     T += (U - T);
+            // else
+            //     T += (U - T) * laplacian_ratio;
+            T = U;
         }
 
         // Copy back to Houdini:
@@ -273,17 +284,17 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         GA_FOR_ALL_PTOFF(gdp, ptoff) 
         {
             const GA_Index ptidx = gdp->pointIndex(ptoff);
-            if ((uint)ptidx < U.rows()) 
+            if ((uint)ptidx < T.rows()) 
             {
-                const UT_Vector3 pos(U((uint)ptidx, 0),
-                                     U((uint)ptidx, 1),
-                                     U((uint)ptidx, 2));
+                const UT_Vector3 pos(T((uint)ptidx, 0),
+                                     T((uint)ptidx, 1),
+                                     T((uint)ptidx, 2));
                 gdp->setPos3(ptoff, pos);
             }
         }
     }
     
-    // FIXME: igs reports error here: igl::eigs(L, M, k+1, igl::EIGS_TYPE_SM, U, D)
+    // This won't compile with Eigen > 3.2.8
     #if 0
      /*  Eigen decompositon*/
     if (EIGENVECTORS(t)) 
