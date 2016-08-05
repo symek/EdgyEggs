@@ -2,8 +2,10 @@
 #include <OP/OP_OperatorTable.h>
 #include "SOP_IGLUVproject.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
+#include "SOP_ShapeOp.hpp"
 
 using namespace SOP_IGL;
+using namespace SOP_SHAPEOP;
 
 void
 newSopOperator(OP_OperatorTable *table)
@@ -26,4 +28,14 @@ newSopOperator(OP_OperatorTable *table)
         1,
         1,
         0));
+
+
+	 table->addOperator(new OP_Operator(
+        "ShapeOp",
+        "ShapeOp",
+        SOP_ShapeOp::myConstructor,
+        SOP_ShapeOp::myTemplateList,
+        2,
+        2,
+        0));    
 }
