@@ -9,9 +9,9 @@ SOURCES =  ./src/converters.cpp\
 INCDIRS = -I$(HOME)/work/eigen\
 	-I$(HOME)/work/libigl/include\
 	-I$(HOME)/work/ShapeOp\
-	-I$(HOME)/work/ShapeOp/libShapeOp/src
+	# -I$(HOME)/work/ShapeOp/libShapeOp/src
 
 OPTIMIZER = -O3
-DSONAME = IglSOP.so
+DSONAME = SOP_EdgyEggs.so
 # Include HDK Makefile.
 include $(HT)/makefiles/Makefile.gnu

@@ -9,8 +9,6 @@
 
 #include <time.h>
 
-class ShapeOp::Solver;
-
 namespace SOP_SHAPEOP {
 
 typedef std::map<int, std::set<int> > UniqueEdges;
