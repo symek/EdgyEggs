@@ -1,5 +1,6 @@
 #include <UT/UT_DSOVersion.h>
 #include <OP/OP_OperatorTable.h>
+#include <libShapeOp/src/Solver.h>>
 #include "SOP_IGLUVproject.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
 #include "SOP_ShapeOp.hpp"
@@ -36,6 +37,6 @@ newSopOperator(OP_OperatorTable *table)
         SOP_ShapeOp::myConstructor,
         SOP_ShapeOp::myTemplateList,
         2,
-        2,
+        3,
         0));    
 }

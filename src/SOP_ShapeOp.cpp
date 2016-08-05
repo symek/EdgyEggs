@@ -1,5 +1,6 @@
 #define SHAPEOP_HEADER_ONLY
-#include <libShapeOp/api/API.cpp>
+#include <libShapeOp/src/Solver.h>
+#include <libShapeOp/src/Constraint.h>
 
 
 #include <GU/GU_Detail.h>
@@ -49,6 +50,8 @@ static PRM_Name names[] = {
     PRM_Name("closeness", "Closeness"),
     PRM_Name("edgestrain","EdgeStrain"),
     PRM_Name("plane",     "Plane"),
+    PRM_Name("similarity", "Similarity"), 
+    PRM_Name("laplacian",  "Laplacian"),
 };
 
 static PRM_Name  termChoices[] =
@@ -59,16 +62,18 @@ static PRM_Name  termChoices[] =
 };
 
 
-static PRM_Default     pointNine(0.9);
 static PRM_ChoiceList  termMenu(PRM_CHOICELIST_SINGLE,  termChoices);
 static PRM_Range       maxiterRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 100);
+static PRM_Range       laplaceRange(PRM_RANGE_UI, -1, PRM_RANGE_UI, 1);
 
 PRM_Template
 SOP_ShapeOp::myTemplateList[] = {
     PRM_Template(PRM_INT_J, 1, &names[0], PRMzeroDefaults, 0, &maxiterRange),
-    PRM_Template(PRM_FLT_J, 1, &names[1], &pointNine),
+    PRM_Template(PRM_FLT_J, 1, &names[1], PRMzeroDefaults),
     PRM_Template(PRM_FLT_J, 1, &names[2], PRMzeroDefaults),
     PRM_Template(PRM_FLT_J, 1, &names[3], PRMzeroDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[4], PRMzeroDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
     PRM_Template(),
 };
 
@@ -84,12 +89,14 @@ SOP_ShapeOp::SOP_ShapeOp(OP_Network *net, const char *name, OP_Operator *op)
 {
    
     mySopFlags.setManagesDataIDs(true);
-    mySolver = shapeop_create();
+    mySolver = new ShapeOp::Solver(); //shapeop_create();
 }
 
 SOP_ShapeOp::~SOP_ShapeOp() 
 {
-     shapeop_delete(mySolver);
+     // shapeop_delete(mySolver);
+     if (mySolver)
+        delete mySolver;
 }
 
 OP_ERROR
@@ -126,6 +133,7 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
 
      // Get rest and deform geometry:
     const GU_Detail *rest_gdp   = inputGeo(1);
+    const GU_Detail *shape_gdp  = inputGeo(2);
 
     // Point count should match:
     if (rest_gdp->getNumPoints() != gdp->getNumPoints())
@@ -138,6 +146,8 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
     //gdp->convex(); // only triangles for now.
     uint numPoints = gdp->getNumPoints();
     uint numPrims  = gdp->getNumPrimitives();
+    uint numConstraints = 0; // we need to book keeping this as solver crashes with #constr. == 0
+    std::vector<ShapeOp::Matrix3X> shapes;
     
 
     const int maxiterations    = MAXITER(t);
@@ -150,39 +160,41 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
 
     GA_Offset ptoff;
     // TODO: place for using GA_AIFNumericArray?
-    std::vector<double> pos_vector;
+    // std::vector<double> pos_vector;
+    ShapeOp::Matrix3X positions(3, numPoints);
+    std::vector<int> indices; 
     GA_FOR_ALL_PTOFF(gdp, ptoff) 
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
-        pos_vector.push_back((double)pos.x());
-        pos_vector.push_back((double)pos.y());
-        pos_vector.push_back((double)pos.z());
+        const int pidx       = gdp->pointIndex(ptoff);
+        positions(0, pidx) = (double)pos.x();
+        positions(1, pidx) = (double)pos.y();
+        positions(2, pidx) = (double)pos.z();
+        indices.push_back(pidx); // TODO: Do we need this?
 
     }
 
-    shapeop_setPoints(mySolver, static_cast<ShapeOpScalar*>(&pos_vector[0]), numPoints*3);
-
+    mySolver->setPoints(positions);
 
     const double closeness = CLOSENESS(t);
     if(closeness)
     {
-        // Obligatory? 
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        GA_FOR_ALL_PTOFF(gdp, ptoff) 
         {
-            const int ptidx = gdp->pointIndex(ptoff);
-            const UT_Vector3 pos = gdp->getPos3(ptoff);
-            const double p[3]    = {pos.x(), pos.y(), pos.z()};
-            const int const_id   = shapeop_addConstraint(mySolver, "Closeness", (int*)&ptidx, 1, closeness);
-            if (const_id == -1)
-                continue;
-            if (SO_SUCCESS != shapeop_editConstraint(mySolver, "Closeness", const_id, p, 3)) {
-                addWarning(SOP_MESSAGE, "Can't setup some constraints..."); // TODO: how to handle errors.
+            const int pidx = gdp->pointIndex(ptoff);
+            std::vector<int> indices(1, pidx);
+            std::shared_ptr<ShapeOp::ClosenessConstraint> \
+            constraint(new ShapeOp::ClosenessConstraint(indices, closeness, positions));
+            if(constraint) {
+                mySolver->addConstraint(constraint);
+                numConstraints++;
+            } else {
+                addWarning(SOP_MESSAGE, "Can't setup some constraints...");
             }
-            
-        } 
+        }
     }
-
+        
+ 
     const double edgestrain = EDGESTRAIN(t);
     if (edgestrain) 
     {
@@ -204,70 +216,113 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
                 UniqueEdges::iterator jt = edges.find(nidx); 
                 if(jt != edges.end()) 
                 {
-                    if (jt->second.find(pidx) != jt->second.end())
-                        continue;
+                    if (jt->second.find(pidx) != jt->second.end()) 
+                        continue; //?
                 } else {
                     edges.find(pidx)->second.insert(nidx);
-                    const int indices[2] = {pidx, nidx};
-                    const int constraint_id = shapeop_addConstraint(mySolver, "EdgeStrain", (int*)indices, 2,  edgestrain);
-                    if (constraint_id == -1) {
-                        addWarning(SOP_MESSAGE, "Some errors in constraints occured.");
-                        continue; // TODO?
-                    }
+                    std::vector<int> indices(2);
+                    indices[0] = pidx; indices[1] = nidx;
+
                     const UT_Vector3 vp1 = rest_gdp->getPos3(ptoff);
                     const UT_Vector3 vp2 = rest_gdp->getPos3(*it);
                     const double edge_length = (double)UT_Vector3(vp2 - vp1).length();
-                    const double fraction = edge_length / 2.f;
-                    const double parms[3] = {edge_length, edge_length-fraction, edge_length+fraction};
-                    if (SO_SUCCESS != shapeop_editConstraint(mySolver, "EdgeStrain", constraint_id, parms, 3)) 
-                    {
-                        addWarning(SOP_MESSAGE, "Can't setup some constraints..."); // TODO: how to handle errors.
+
+                    std::shared_ptr<ShapeOp::EdgeStrainConstraint> \
+                    constraint(new ShapeOp::EdgeStrainConstraint(indices, edgestrain, positions));
+                    if(constraint) {
+                        constraint->setEdgeLength(edge_length);
+                        mySolver->addConstraint(constraint);
+                        numConstraints++;
+                    } else {
+                        addWarning(SOP_MESSAGE, "Can't setup some constraints...");
                     }
-                    #if 0
-                    std::cout << "Edge: " << indices[0] << "--" << indices[1] << ". L/Min/Max" << parms[0];
-                    std::cout << "/" << parms[1] << "/" << parms[2] << "\n";
-                    #endif
-                }
+                }  
             }
 
         }
 
     }
 
-
     const double plane = PLANE(t);
-    if (plane)
-    {
-        GA_Offset ptoff;
+    if (plane) {
+        std::shared_ptr<ShapeOp::PlaneConstraint> \
+        constraint(new ShapeOp::PlaneConstraint(indices, plane, positions));
+        if(constraint) {
+            mySolver->addConstraint(constraint);
+            numConstraints++;
+        }
+    }
+
+    const float similarity = SIMILARITY(t);
+
+    if (similarity && shape_gdp) {
+        const int shapeNumPoints = shape_gdp->getNumPoints();
+        ShapeOp::Matrix3X shape(3, shapeNumPoints);
         std::vector<int> indices;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) {
-            const int pidx = gdp->pointIndex(ptoff);
+        GA_FOR_ALL_PTOFF(shape_gdp, ptoff) {
+            const UT_Vector3 pos = shape_gdp->getPos3(ptoff);
+            const int pidx       = shape_gdp->pointIndex(ptoff);
+            shape(0, pidx) = (double)pos.x();
+            shape(1, pidx) = (double)pos.y();
+            shape(2, pidx) = (double)pos.z();
             indices.push_back(pidx);
         }
-
-        shapeop_addConstraint(mySolver, "Plane", (int*)&indices[0], numPoints, plane);
+        shapes.push_back(shape); // 'shapes' declared above in cookMySop() space.
+        std::shared_ptr<ShapeOp::SimilarityConstraint> \
+        constraint(new ShapeOp::SimilarityConstraint(indices, similarity, positions));
+        if(constraint) {
+            constraint->setShapes(shapes);
+            mySolver->addConstraint(constraint);
+            numConstraints++;
+        } else {
+            addWarning(SOP_MESSAGE, "Can't setup some constraints...");
+        }
 
     }
 
 
-     if(shapeop_init(mySolver)) {
+    const float laplacian = LAPLACIAN(t);
+    if (laplacian) {
+        const float abs_laplacian = SYSabs(laplacian);
+        bool disp_lap = false;
+        if (laplacian < 0.f)
+            disp_lap = true;
+        std::shared_ptr<ShapeOp::UniformLaplacianConstraint> \
+        constraint(new ShapeOp::UniformLaplacianConstraint(indices, abs_laplacian, positions, disp_lap));
+        if(constraint) {
+            mySolver->addConstraint(constraint);
+            numConstraints++;
+        } else {
+            addWarning(SOP_MESSAGE, "Can't setup some constraints...");
+        }
+    }
+
+
+
+    // Solver will crash with numConstraints == 0
+    if (!numConstraints) {
+        addWarning(SOP_MESSAGE, "No constrained specified.");
+        return error();
+    }
+
+     if(!mySolver->initialize()) {
             addWarning(SOP_MESSAGE, "Can't initialize solver.");
             return error();
         }
 
-    if(shapeop_solve(mySolver, maxiterations)){
+    if(!mySolver->solve(maxiterations)){
         addWarning(SOP_MESSAGE, "Can't solve.");
         return error();
     }
 
-    UT_ASSERT(pos_vector.size() == numPoints*3);
-    shapeop_getPoints(mySolver, &pos_vector[0], numPoints*3);
+    UT_ASSERT(positions.rows() == numPoints);
+    positions = mySolver->getPoints();
 
     {
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff) {
             const uint ptidx = gdp->pointIndex(ptoff);
-            const UT_Vector3 pos(pos_vector[3*ptidx], pos_vector[1+3*ptidx], pos_vector[2+3*ptidx]);
+            const UT_Vector3 pos(positions(0, ptidx), positions(1, ptidx), positions(2, ptidx));
             gdp->setPos3(ptoff, pos);
         }
     }
