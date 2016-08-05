@@ -185,43 +185,47 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
     if (edgestrain) 
     {
 
-        std::map<int, int> edges; // unique edges.
+        UniqueEdges edges; // unique edges.
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(rest_gdp, ptoff)
         {
+            const int pidx = (int)rest_gdp->pointIndex(ptoff);
+            std::set<int> uniques;
+            edges.insert(std::pair<int, std::set<int> >(pidx, uniques));
             std::set<GA_Offset> neighbours;
             getPointNeighbours(rest_gdp, ptoff, neighbours);
             std::set<GA_Offset>::const_iterator it;
             for (it=neighbours.begin(); it!=neighbours.end(); ++it)
             {
-                const int pidx = (int)rest_gdp->pointIndex(ptoff);
                 const int nidx = (int)rest_gdp->pointIndex(*it);
                 // Ommit a reapting edges.
-                if (edges.find(nidx) != edges.end()) {
-                    if (edges.find(nidx)->second == pidx)
+                UniqueEdges::iterator jt = edges.find(nidx); 
+                if(jt != edges.end()) 
+                {
+                    if (jt->second.find(pidx) != jt->second.end())
                         continue;
                 } else {
-                    edges.insert(std::pair<int, int>(pidx, nidx));
+                    edges.find(pidx)->second.insert(nidx);
+                    const int indices[2] = {pidx, nidx};
+                    const int constraint_id = shapeop_addConstraint(mySolver, "EdgeStrain", (int*)indices, 2,  edgestrain);
+                    if (constraint_id == -1) {
+                        addWarning(SOP_MESSAGE, "Some errors in constraints occured.");
+                        continue; // TODO?
+                    }
+                    const UT_Vector3 vp1 = rest_gdp->getPos3(ptoff);
+                    const UT_Vector3 vp2 = rest_gdp->getPos3(*it);
+                    const double edge_length = (double)UT_Vector3(vp2 - vp1).length();
+                    const double fraction = edge_length / 2.f;
+                    const double parms[3] = {edge_length, edge_length-fraction, edge_length+fraction};
+                    if (SO_SUCCESS != shapeop_editConstraint(mySolver, "EdgeStrain", constraint_id, parms, 3)) 
+                    {
+                        addWarning(SOP_MESSAGE, "Can't setup some constraints..."); // TODO: how to handle errors.
+                    }
+                    #if 1
+                    std::cout << "Edge: " << indices[0] << "--" << indices[1] << ". L/Min/Max" << parms[0];
+                    std::cout << "/" << parms[1] << "/" << parms[2] << "\n";
+                    #endif
                 }
-                const int indices[2] = {pidx, nidx};
-                const int constraint_id = shapeop_addConstraint(mySolver, "EdgeStrain", (int*)indices, 2,  edgestrain);
-                if (constraint_id == -1) {
-                    addWarning(SOP_MESSAGE, "Some errors in constraints occured.");
-                    continue; // TODO?
-                }
-                const UT_Vector3 vp1 = rest_gdp->getPos3(ptoff);
-                const UT_Vector3 vp2 = rest_gdp->getPos3(*it);
-                const double edge_length = (double)UT_Vector3(vp2 - vp1).length();
-                const double fraction = edge_length / 2.f;
-                const double parms[3] = {edge_length, edge_length-fraction, edge_length+fraction};
-                if (SO_SUCCESS != shapeop_editConstraint(mySolver, "EdgeStrain", constraint_id, parms, 3)) 
-                {
-                    addWarning(SOP_MESSAGE, "Can't setup some constraints..."); // TODO: how to handle errors.
-                }
-                #if 0
-                std::cout << "Edge: " << indices[0] << "--" << indices[1] << ". L/Min/Max" << parms[0];
-                std::cout << "/" << parms[1] << "/" << parms[2] << "\n";
-                #endif
             }
 
         }
@@ -231,12 +235,12 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
 
      if(shapeop_init(mySolver)) {
             addWarning(SOP_MESSAGE, "Can't initialize solver.");
-            // return error();
+            return error();
         }
 
     if(shapeop_solve(mySolver, maxiterations)){
         addWarning(SOP_MESSAGE, "Can't solve.");
-        // return error();
+        return error();
     }
 
     UT_ASSERT(pos_vector.size() == numPoints*3);

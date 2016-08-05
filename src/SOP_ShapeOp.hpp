@@ -13,6 +13,8 @@ class ShapeOpSolver;
 
 namespace SOP_SHAPEOP {
 
+typedef std::map<int, std::set<int> > UniqueEdges;
+
 enum ShapeOp_ConstraintType 
 {
     EDGE_STRAIN,
