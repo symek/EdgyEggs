@@ -45,9 +45,10 @@ void getPointNeighbours(const GU_Detail *gdp, const GA_Offset ptoff, std::set<GA
 
 
 static PRM_Name names[] = {
-    PRM_Name("maxiter",  "Max Solver interations"),
-    PRM_Name("closeness", "Closeness constr."),
-    PRM_Name("edgestrain","EdgeStrain constr."),
+    PRM_Name("maxiter",   "Max Solver interations"),
+    PRM_Name("closeness", "Closeness"),
+    PRM_Name("edgestrain","EdgeStrain"),
+    PRM_Name("plane",     "Plane"),
 };
 
 static PRM_Name  termChoices[] =
@@ -67,6 +68,7 @@ SOP_ShapeOp::myTemplateList[] = {
     PRM_Template(PRM_INT_J, 1, &names[0], PRMzeroDefaults, 0, &maxiterRange),
     PRM_Template(PRM_FLT_J, 1, &names[1], &pointNine),
     PRM_Template(PRM_FLT_J, 1, &names[2], PRMzeroDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[3], PRMzeroDefaults),
     PRM_Template(),
 };
 
@@ -161,7 +163,7 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
     shapeop_setPoints(mySolver, static_cast<ShapeOpScalar*>(&pos_vector[0]), numPoints*3);
 
 
-    const float closeness = CLOSENESS(t);
+    const double closeness = CLOSENESS(t);
     if(closeness)
     {
         // Obligatory? 
@@ -181,7 +183,7 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
         } 
     }
 
-    const float edgestrain = EDGESTRAIN(t);
+    const double edgestrain = EDGESTRAIN(t);
     if (edgestrain) 
     {
 
@@ -221,7 +223,7 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
                     {
                         addWarning(SOP_MESSAGE, "Can't setup some constraints..."); // TODO: how to handle errors.
                     }
-                    #if 1
+                    #if 0
                     std::cout << "Edge: " << indices[0] << "--" << indices[1] << ". L/Min/Max" << parms[0];
                     std::cout << "/" << parms[1] << "/" << parms[2] << "\n";
                     #endif
@@ -229,6 +231,21 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
             }
 
         }
+
+    }
+
+
+    const double plane = PLANE(t);
+    if (plane)
+    {
+        GA_Offset ptoff;
+        std::vector<int> indices;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            const int pidx = gdp->pointIndex(ptoff);
+            indices.push_back(pidx);
+        }
+
+        shapeop_addConstraint(mySolver, "Plane", (int*)&indices[0], numPoints, plane);
 
     }
 

@@ -47,6 +47,7 @@ private:
     int     MAXITER(fpreal t)                { return evalInt("maxiter", 0, t); }
     fpreal  CLOSENESS(fpreal t)              { return evalFloat("closeness", 0, t); }
     fpreal  EDGESTRAIN(fpreal t)             { return evalFloat("edgestrain", 0, t); }
+    fpreal  PLANE(fpreal t)             { return evalFloat("plane", 0, t); }
 
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
