@@ -287,13 +287,28 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
         bool disp_lap = false;
         if (laplacian < 0.f)
             disp_lap = true;
-        std::shared_ptr<ShapeOp::UniformLaplacianConstraint> \
-        constraint(new ShapeOp::UniformLaplacianConstraint(indices, abs_laplacian, positions, disp_lap));
-        if(constraint) {
-            mySolver->addConstraint(constraint);
-            numConstraints++;
-        } else {
-            addWarning(SOP_MESSAGE, "Can't setup some constraints...");
+
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            std::vector<int> indices;
+            const int ptidx = gdp->pointIndex(ptoff);
+            indices.push_back(ptidx);
+            std::set<GA_Offset> neighbours;
+            getPointNeighbours(gdp, ptoff, neighbours);
+            std::set<GA_Offset>::const_iterator it;
+            for (it=neighbours.begin(); it!=neighbours.end(); ++it) {
+                const int nidx = (int)gdp->pointIndex(*it);
+                indices.push_back(nidx);
+            }
+
+            std::shared_ptr<ShapeOp::UniformLaplacianConstraint> \
+            constraint(new ShapeOp::UniformLaplacianConstraint(indices, abs_laplacian, positions, disp_lap));
+            if(constraint) {
+                mySolver->addConstraint(constraint);
+                numConstraints++;
+            } else {
+                addWarning(SOP_MESSAGE, "Can't setup some constraints...");
+            }
         }
     }
 
