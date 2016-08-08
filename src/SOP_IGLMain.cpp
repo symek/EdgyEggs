@@ -4,9 +4,11 @@
 #include "SOP_IGLUVproject.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
 #include "SOP_ShapeOp.hpp"
+#include "SOP_Eltopo.hpp"
 
 using namespace SOP_IGL;
 using namespace SOP_SHAPEOP;
+using namespace SOP_ELTOPO;
 
 void
 newSopOperator(OP_OperatorTable *table)
@@ -38,5 +40,14 @@ newSopOperator(OP_OperatorTable *table)
         SOP_ShapeOp::myTemplateList,
         2,
         3,
-        0));    
+        0));   
+
+    table->addOperator(new OP_Operator(
+        "Eltopo",
+        "Eltopo",
+        SOP_Eltopo::myConstructor,
+        SOP_Eltopo::myTemplateList,
+        1,
+        2,
+        0)); 
 }
