@@ -182,10 +182,13 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
         GA_FOR_ALL_PTOFF(gdp, ptoff) 
         {
             const int pidx = gdp->pointIndex(ptoff);
+            const UT_Vector3 pos = gdp->getPos3(ptoff);
             std::vector<int> indices(1, pidx);
             std::shared_ptr<ShapeOp::ClosenessConstraint> \
             constraint(new ShapeOp::ClosenessConstraint(indices, closeness, positions));
             if(constraint) {
+                ShapeOp::Vector3 v(pos.x(), pos.y(), pos.z());
+                constraint->setPosition(v);
                 mySolver->addConstraint(constraint);
                 numConstraints++;
             } else {
@@ -256,7 +259,7 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
     const float similarity = SIMILARITY(t);
 
     if (similarity && !shape_gdp) {
-        addWarning(SOP_MESSAGE, "No shape geomtry connected to third input.");
+        addWarning(SOP_MESSAGE, "No shape geometry connected to third input.");
     }
 
     if (similarity && shape_gdp) {
