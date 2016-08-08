@@ -255,6 +255,10 @@ SOP_ShapeOp::cookMySop(OP_Context &context)
 
     const float similarity = SIMILARITY(t);
 
+    if (similarity && !shape_gdp) {
+        addWarning(SOP_MESSAGE, "No shape geomtry connected to third input.");
+    }
+
     if (similarity && shape_gdp) {
         const int shapeNumPoints = shape_gdp->getNumPoints();
         ShapeOp::Matrix3X shape(3, shapeNumPoints);
