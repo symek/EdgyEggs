@@ -14,6 +14,7 @@
 
 #include "SOP_Eltopo.hpp"
 
+
 using namespace SOP_ELTOPO;
 
 
@@ -85,41 +86,14 @@ SOP_Eltopo::SOP_Eltopo(OP_Network *net, const char *name, OP_Operator *op)
 {
    
     mySopFlags.setManagesDataIDs(true);
-    my_mesh         = std::make_shared<ElTopoMesh>();
-    static_options  = std::make_shared<ElTopoStaticOperationsOptions>();
-    general_options = std::make_shared<ElTopoGeneralOptions>();
 }
 
 SOP_Eltopo::~SOP_Eltopo() 
 {
-     // shapeop_delete(mySolver);
-     // if (mySolver)
-        // delete mySolver;
-    // delete my_mesh;
-    // delete static_options;
-    // delete general_options;
+  
 }
 
-OP_ERROR
-SOP_Eltopo::cookInputGroups(OP_Context &context, int alone)
-{
-    
-    return cookInputPointGroups(
-        context, // This is needed for cooking the group parameter, and cooking the input if alone.
-        myGroup, // The group (or NULL) is written to myGroup if not alone.
-        alone,   // This is true iff called outside of cookMySop to update handles.
-                 // true means the group will be for the input geometry.
-                 // false means the group will be for gdp (the working/output geometry).
-        true,    // (default) true means to set the selection to the group if not alone and the highlight flag is on.
-        0,       // (default) Parameter index of the group field
-        -1,      // (default) Parameter index of the group type field (-1 since there isn't one)
-        true,    // (default) true means that a pointer to an existing group is okay; false means group is always new.
-        false,   // (default) false means new groups should be unordered; true means new groups should be ordered.
-        true,    // (default) true means that all new groups should be detached, so not owned by the detail;
-                 //           false means that new point and primitive groups on gdp will be owned by gdp.
-        0        // (default) Index of the input whose geometry the group will be made for if alone.
-    );
-}
+
 
 OP_ERROR
 SOP_Eltopo::cookMySop(OP_Context &context)
@@ -137,109 +111,74 @@ SOP_Eltopo::cookMySop(OP_Context &context)
     const int numPoints = gdp->getNumPoints();
     const int numPrims  = gdp->getNumPrimitives();
 
-    std::vector<double> positions;
+    std::vector<Vec3d> positions;
     std::vector<double> masses;
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(gdp, ptoff) 
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
-        positions.push_back((double)pos.x());
-        positions.push_back((double)pos.y());
-        positions.push_back((double)pos.z());
+        positions.push_back(Vec3d(pos.x(), pos.y(), pos.z()));
         masses.push_back(1.f);
     }
 
-    std::vector<int> faces;
+    std::vector<Vec3st> faces;
     GA_Iterator it(gdp->getPrimitiveRange());
     for (; !it.atEnd(); ++it)
     {
         const GEO_Primitive *prim = gdp->getGEOPrimitive(*it);
         GA_Primitive::const_iterator vt;
+        Vec3st v;
+        int vertex_index = 0;
         for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
             const GA_Offset voff = vt.getPointOffset();
             const int ptidx      = gdp->pointIndex(voff);
-            faces.push_back(static_cast<int>(ptidx));
+            v[SYSmin(vertex_index,2)] = static_cast<int>(ptidx);
+            vertex_index++;
         }
+        faces.push_back(v);
     }
 
-    my_mesh->num_vertices     = numPoints;
-    my_mesh->vertex_locations = (double*)&positions[0];
-    my_mesh->num_triangles    = numPrims;
-    my_mesh->triangles        = (int*)&faces[0];
-    my_mesh->vertex_masses    = (double*)&masses[0];
+    SurfTrackInitializationParameters p;
+    p.m_max_volume_change = 1.f;   
+    p.m_min_edge_length   = .01f;
+    p.m_max_edge_length   = 1.f;
+    p.m_collision_safety = false;
+    SurfTrack surface_tracker(positions, faces, masses, p);
+    // surface_tracker = std::make_shared<SurfTrack>(positions, faces, masses, p;
+    surface_tracker.improve_mesh();
+    
+    // // do merging
+    surface_tracker.topology_changes();
+    
+    surface_tracker.defrag_mesh();
+
+    const int num_new_points = surface_tracker.get_num_vertices();
+    const int num_new_prims  = surface_tracker.m_mesh.num_triangles();
+
+    gdp->clearAndDestroy();
+    gdp->appendPointBlock(num_new_points);
+
+   { 
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) 
+           {
+              const Vec3d& v = surface_tracker.get_position((int)ptoff);
+              const UT_Vector3 pos(v[0], v[1], v[2]);
+              gdp->setPos3(ptoff, pos);
+           }
+   }
+
+    for (int i=0; i< num_new_prims; ++i) 
+    {
+        const Vec3st& curr_tri = surface_tracker.m_mesh.get_triangle(i); 
+        GU_PrimPoly *prim = GU_PrimPoly::build(gdp, 0, false, false);
+        prim->appendVertex(curr_tri[0]);
+        prim->appendVertex(curr_tri[1]);
+        prim->appendVertex(curr_tri[2]); 
+    }
 
 
-     // whether to perform mesh maintenance
-
-    // m_proximity_epsilon( 1e-4 ),
-    // m_friction_coefficient( 0.0 ),
-    // m_min_triangle_area( 1e-7 ),
-    // m_improve_collision_epsilon( 2e-6 ),
-    // m_use_fraction( false ),
-    // m_min_edge_length( UNINITIALIZED_DOUBLE ),     // <- Don't allow instantiation without setting these parameters
-    // m_max_edge_length( UNINITIALIZED_DOUBLE ),     // <-
-    // m_max_volume_change( UNINITIALIZED_DOUBLE ),   // <-
-    // m_min_triangle_angle( 0.0 ),
-    // m_max_triangle_angle( 180.0 ),
-    // m_use_curvature_when_splitting( false ),
-    // m_use_curvature_when_collapsing( false ),
-    // m_min_curvature_multiplier( 1.0 ),
-    // m_max_curvature_multiplier( 1.0 ),
-    // m_allow_vertex_movement( true ),
-    // m_edge_flip_min_length_change( 1e-8 ),
-    // m_merge_proximity_epsilon( 1e-5 ),
-    // m_subdivision_scheme(NULL),
-    // m_collision_safety(true),
-    // m_allow_topology_changes(true),
-    // m_allow_non_manifold(true),
-    // m_perform_improvement(true)     
-    // // whether to allow merging and separation
-    // static_options->m_perform_improvement = true;            
-    // static_options->m_allow_topology_changes = true;
-    // // maximum allowable change in volume when performing mesh maintenance
-    // static_options->m_max_volume_change = 1.f;       
-    // // edges shorter than this length will be collapsed
-    // static_options->m_min_edge_length = 0.01f;              
-    // // edges longer then this length will be subdivided
-    // static_options->m_max_edge_length = 1.f;              
-    // static_options->m_min_triangle_area = 0.001f;
-    // static_options->m_min_triangle_angle = 0.01f;
-    // static_options->m_max_triangle_angle = 120.f;   
-    // static_options->m_use_curvature_when_splitting = false;
-    // static_options->m_use_curvature_when_collapsing = false;
-
-    // // Clamp curvature scaling to these values
-    // static_options->m_min_curvature_multiplier = 1.f;
-    // static_options->m_max_curvature_multiplier = 1.f;
-    // static_options->m_allow_vertex_movement = true;
-    // / Minimum edge length improvement in order to flip an edge
-    // static_options->m_edge_flip_min_length_change = 0.001f;
-    // /// Elements within this distance will trigger a merge attempt   
-    // static_options->m_merge_proximity_epsilon = 0.01f;
-    // /// Type of subdivision to use when collapsing or splitting (butterfly, quadric error minimization, etc.)
-    // static_options->m_subdivision_scheme = NULL;
-    // /// Whether to enforce collision-free surfaces (including during mesh maintenance operations)
-    //  static_options->m_collision_safety;
-    // /// Wether to allow non-manifold (edges incident on more than two triangles)
-    static_options->m_allow_non_manifold  = false;
-    static_options->m_allow_topology_changes = false;
-    // static_options->m_collision_safety = true;
-
-    general_options->m_verbose = 1;
-    // general_options->m_proximity_epsilon =  1e-5 ;
-
-    ElTopoDefragInformation defrag_info;
-    ElTopoMesh outputs;
-
-
-    el_topo_static_operations(my_mesh.get(), general_options.get(), \
-        static_options.get(), &defrag_info, &outputs);
-
-    std::cout << defrag_info.num_vertex_changes << ", " << defrag_info.num_triangle_changes << "\n";
-
-    // el_topo_free_static_operations_results(&outputs, &defrag_info);
-
-    gdp->getP()->bumpDataId();
+    // gdp->getP()->bumpDataId();
     return error();
 }
   

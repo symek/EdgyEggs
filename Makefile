@@ -10,7 +10,8 @@ SOURCES =  ./src/converters.cpp\
 INCDIRS = -I$(HOME)/work/eigen\
 	-I$(HOME)/work/libigl/include\
 	-I$(HOME)/work/ShapeOp\
-	-I$(HOME)/work/eltopo
+	-I$(HOME)/work/eltopo/eltopo3d\
+	-I$(HOME)/work/eltopo/common
 
 LIBS = $(HOME)/work/eltopo/eltopo3d/libeltopo_release.a -llapack -lblas
 
