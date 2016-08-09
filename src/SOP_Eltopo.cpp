@@ -2,6 +2,7 @@
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
 #include <OP/OP_Operator.h>
+#include <OP/OP_Director.h>
 #include <OP/OP_AutoLockInputs.h>
 #include <OP/OP_OperatorTable.h>
 #include <PRM/PRM_Include.h>
@@ -127,12 +128,23 @@ SOP_Eltopo::cookMySop(OP_Context &context)
         return error();
 
     fpreal t = context.getTime();
+    const double delta = OPgetDirector()->getChannelManager()->getSampleStep();
     duplicateSource(0, context);
+    const GU_Detail *advected_gdp = inputGeo(1);
 
     // Only triangles
     gdp->convex();
     const int numPoints = gdp->getNumPoints();
     const int numPrims  = gdp->getNumPrimitives();
+
+
+    if(advected_gdp) {
+        if (advected_gdp->getNumPoints() != numPoints)
+        {
+            addWarning(SOP_MESSAGE, "Advected geometry doesn't match.");
+            advected_gdp = NULL;
+        }
+    }
 
     std::vector<Vec3d> positions;
     std::vector<double> masses;
@@ -198,14 +210,31 @@ SOP_Eltopo::cookMySop(OP_Context &context)
 
     parms.m_subdivision_scheme = scheme.get();
     SurfTrack surface_tracker(positions, faces, masses, parms);
-    // surface_tracker = std::make_shared<SurfTrack>(positions, faces, masses, p;
-    surface_tracker.improve_mesh();
-    
-    // // do merging
-    surface_tracker.topology_changes();
-    
-    surface_tracker.defrag_mesh();
 
+    if (advected_gdp) 
+    {
+        std::vector<Vec3d> new_positions;
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(advected_gdp, ptoff) 
+        {
+            const UT_Vector3 pos = advected_gdp->getPos3(ptoff);
+            new_positions.push_back(Vec3d(pos.x(), pos.y(), pos.z()));
+        }
+
+        surface_tracker.set_all_newpositions(new_positions);
+        double actual_delta = 0.f;
+        surface_tracker.integrate(delta, actual_delta);
+
+    } else 
+    {
+
+        // Improve mesh.
+        surface_tracker.improve_mesh();
+        // // do merging
+        surface_tracker.topology_changes();
+        surface_tracker.defrag_mesh();
+
+    }
     const int num_new_points = surface_tracker.get_num_vertices();
     const int num_new_prims  = surface_tracker.m_mesh.num_triangles();
 
