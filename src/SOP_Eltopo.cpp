@@ -128,7 +128,7 @@ SOP_Eltopo::cookMySop(OP_Context &context)
         return error();
 
     fpreal t = context.getTime();
-    const double delta = OPgetDirector()->getChannelManager()->getSampleStep();
+    const double delta = 1.f / OPgetDirector()->getChannelManager()->getSamplesPerSec();
     duplicateSource(0, context);
     const GU_Detail *advected_gdp = inputGeo(1);
 
@@ -211,12 +211,10 @@ SOP_Eltopo::cookMySop(OP_Context &context)
     parms.m_subdivision_scheme = scheme.get();
     SurfTrack surface_tracker(positions, faces, masses, parms);
 
-    if (advected_gdp) 
-    {
+    if (advected_gdp) {
         std::vector<Vec3d> new_positions;
         GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(advected_gdp, ptoff) 
-        {
+        GA_FOR_ALL_PTOFF(advected_gdp, ptoff) {
             const UT_Vector3 pos = advected_gdp->getPos3(ptoff);
             new_positions.push_back(Vec3d(pos.x(), pos.y(), pos.z()));
         }
@@ -224,17 +222,15 @@ SOP_Eltopo::cookMySop(OP_Context &context)
         surface_tracker.set_all_newpositions(new_positions);
         double actual_delta = 0.f;
         surface_tracker.integrate(delta, actual_delta);
-
-    } else 
-    {
-
-        // Improve mesh.
-        surface_tracker.improve_mesh();
-        // // do merging
-        surface_tracker.topology_changes();
-        surface_tracker.defrag_mesh();
-
     }
+
+   
+    // Improve mesh.
+    surface_tracker.improve_mesh();
+    surface_tracker.topology_changes();
+    surface_tracker.defrag_mesh();
+
+
     const int num_new_points = surface_tracker.get_num_vertices();
     const int num_new_prims  = surface_tracker.m_mesh.num_triangles();
 
@@ -260,8 +256,6 @@ SOP_Eltopo::cookMySop(OP_Context &context)
         prim->appendVertex(curr_tri[2]); 
     }
 
-
-    // gdp->getP()->bumpDataId();
     return error();
 }
   

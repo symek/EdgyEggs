@@ -10,6 +10,7 @@
 // FIXME: remove from header...
 #include <eltopo.h>
 #include <surftrack.h>
+#include <dynamicsurface.h>
 #include <vec.h>
 #include <subdivisionscheme.h>
 
