@@ -7,20 +7,25 @@
 #include <SOP/SOP_Node.h>
 #include <UT/UT_Interrupt.h>
 
+// FIXME: remove from header...
 #include <eltopo.h>
 #include <surftrack.h>
 #include <vec.h>
+#include <subdivisionscheme.h>
 
 #include <time.h>
 
 namespace SOP_ELTOPO {
 
+enum eltopo_subdiv_schemes {
+    MIDPOINT = 0,
+    BUTTERFLY,
+    MODIFIED_BUTTERFLY,
+    QUADRATIC_ERROR_MIN,
+};
+
 typedef std::map<int, std::set<int> > UniqueEdges;
 
-// class ElTopoGeneralOptions;
-// class ElTopoStaticOperationsOptions;
-// class ElTopoIntegrationOptions;
-// class ElTopoMesh;
 
 class SOP_Eltopo : public SOP_Node
 {
@@ -43,13 +48,24 @@ protected:
     virtual OP_ERROR         cookMySop(OP_Context &context);
 
 private:
-    // void    getGroups(UT_String &str)        { evalString(str, "group", 0, 0); }
-    int     MAXITER(fpreal t)                { return evalInt("maxiter", 0, t); }
-    fpreal  CLOSENESS(fpreal t)              { return evalFloat("closeness", 0, t); }
-    fpreal  EDGESTRAIN(fpreal t)             { return evalFloat("edgestrain", 0, t); }
-    fpreal  PLANE(fpreal t)                  { return evalFloat("plane", 0, t); }
-    fpreal  SIMILARITY(fpreal t)             { return evalFloat("similarity", 0, t); }
-    fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t); }
+    // void    getGroups(UT_String &str)         { evalString(str, "group", 0, 0); }
+    int     COLLISIONSAFETY(fpreal t)             { return evalInt("collisionsafety", 0, t); }
+    int     ALLOWTOPOLOGYCHANGE(fpreal t)         { return evalInt("allowtopologychange", 0, t); }
+    int     PERFORMIMPROVMENT(fpreal t)           { return evalInt("performimprovment", 0, t); }
+    int     ALLOWVERTEXMOVEMENT(fpreal t)         { return evalInt("allowvertexmovement", 0, t); }
+    int     USEFRACTION(fpreal t)                 { return evalInt("usefraction", 0, t); }
+    int     USECURVATUREWHENSPLITING(fpreal t)    { return evalInt("usecurvaturewhenspliting", 0, t); }
+    int     USECURVATUREWHENCOLLAPSING(fpreal t)  { return evalInt("usecurvaturewhencollapsing", 0, t); }
+    int     ALLOWNONNANIFOLD(fpreal t)            { return evalInt("allownonnanifold", 0, t); }
+
+    fpreal  MINEDGELENGTH(fpreal t)              { return evalFloat("minedgelength", 0, t); }
+    fpreal  MAXEDGELENGTH(fpreal t)              { return evalFloat("maxedgelength", 0, t); }
+    fpreal  MINTRIANGLEAREA(fpreal t)            { return evalFloat("mintrianglearea", 0, t); }
+    fpreal  MAXVOLUMECHANGE(fpreal t)            { return evalFloat("maxvolumechange", 0, t); }
+    fpreal  EDGEFLIPMINLENGTH(fpreal t)          { return evalFloat("edgeflipminlength", 0, t); }
+    fpreal  MERGEPROXIMITYEPS(fpreal t)          { return evalFloat("mergeproximityeps", 0, t); }
+    int     SUBDIVISIONSCHEME(fpreal t)          { return evalInt("subdivisionscheme", 0, t); }
+    // fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t); }
 
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
@@ -67,4 +83,3 @@ private:
 
 
 } // End SOP_Eltopo namespace
-

@@ -43,34 +43,57 @@ void getPointNeighbours(const GU_Detail *gdp, const GA_Offset ptoff, std::set<GA
 
 
 static PRM_Name names[] = {
-    PRM_Name("maxiter",   "Max Solver interations"),
-    PRM_Name("closeness", "Closeness"),
-    PRM_Name("edgestrain","EdgeStrain"),
-    PRM_Name("plane",     "Plane"),
-    PRM_Name("similarity", "Similarity"), 
-    PRM_Name("laplacian",  "Laplacian"),
+    PRM_Name("collisionsafety",      "Assume non-intersecting input"),
+    PRM_Name("allowtopologychange",  "Allow Topology Change"),
+    PRM_Name("allownonnanifold",     "Allow Non Manifold"),
+    PRM_Name("performimprovment",    "Perform Improvment"),
+    PRM_Name("allowvertexmovement",  "Allow Vertex Movement"),
+    PRM_Name("usefraction",          "Use Fraction"), 
+    PRM_Name("usecurvaturewhenspliting",  "Use Curvature (spliting)"),
+    PRM_Name("usecurvaturewhencollapsing","Use Curvature (collapsing)"),
+
+    PRM_Name("minedgelength",        "Min Edge Length"),
+    PRM_Name("maxedgelength",        "Max Edge Length"),
+    PRM_Name("mintrianglearea",      "Min Triangle Area"),
+    PRM_Name("maxvolumechange",      "Max Volume Change"),
+    PRM_Name("edgeflipminlength",    "Edge Flip Min Length Change"),
+    PRM_Name("mergeproximityeps",    "Merge Proximity Epsilon"),
+    PRM_Name("subdivisionscheme",    "Subdivision Scheme"),
+      
 };
 
-static PRM_Name  termChoices[] =
+
+
+static PRM_Name  subdivideSchemeChoices[] =
 {
-    PRM_Name("0", "Edge Strain"),
-    PRM_Name("1", "Triangle Strain"),
+    PRM_Name("0", "MidPoint"),
+    PRM_Name("1", "Butterfly"),
+    PRM_Name("2", "Modified Butterfly"),
+    PRM_Name("3", "Quadratic Error Min"),
     PRM_Name(0)
 };
 
-
-static PRM_ChoiceList  termMenu(PRM_CHOICELIST_SINGLE,  termChoices);
-static PRM_Range       maxiterRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 100);
-static PRM_Range       laplaceRange(PRM_RANGE_UI, -1, PRM_RANGE_UI, 1);
+static PRM_ChoiceList  subdivideSchemeMenu(PRM_CHOICELIST_SINGLE,  subdivideSchemeChoices);
 
 PRM_Template
 SOP_Eltopo::myTemplateList[] = {
-    // PRM_Template(PRM_INT_J, 1, &names[0], PRMzeroDefaults, 0, &maxiterRange),
-    // PRM_Template(PRM_FLT_J, 1, &names[1], PRMzeroDefaults),
-    // PRM_Template(PRM_FLT_J, 1, &names[2], PRMzeroDefaults),
-    // PRM_Template(PRM_FLT_J, 1, &names[3], PRMzeroDefaults),
-    // PRM_Template(PRM_FLT_J, 1, &names[4], PRMzeroDefaults),
-    // PRM_Template(PRM_FLT_J, 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_TOGGLE, 1, &names[0], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[2], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[3], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[4], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[5], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[6], PRMzeroDefaults),
+    PRM_Template(PRM_TOGGLE, 1, &names[7], PRMzeroDefaults),
+
+    PRM_Template(PRM_FLT_J, 1, &names[8],  PRMpointOneDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[9],  PRMoneDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[10], PRMpointOneDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[11], PRMoneDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[12], PRMpointOneDefaults),
+    PRM_Template(PRM_FLT_J, 1, &names[13], PRMpointOneDefaults),
+    PRM_Template(PRM_ORD,   1, &names[14], 0, &subdivideSchemeMenu, 0, 0),
+
     PRM_Template(),
 };
 
@@ -118,7 +141,7 @@ SOP_Eltopo::cookMySop(OP_Context &context)
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
         positions.push_back(Vec3d(pos.x(), pos.y(), pos.z()));
-        masses.push_back(1.f);
+        masses.push_back(0.1f);
     }
 
     std::vector<Vec3st> faces;
@@ -138,12 +161,43 @@ SOP_Eltopo::cookMySop(OP_Context &context)
         faces.push_back(v);
     }
 
-    SurfTrackInitializationParameters p;
-    p.m_max_volume_change = 1.f;   
-    p.m_min_edge_length   = .01f;
-    p.m_max_edge_length   = 1.f;
-    p.m_collision_safety = false;
-    SurfTrack surface_tracker(positions, faces, masses, p);
+
+    SurfTrackInitializationParameters parms;
+    parms.m_collision_safety       = COLLISIONSAFETY(t);
+    parms.m_allow_topology_changes = ALLOWTOPOLOGYCHANGE(t);
+    parms.m_allow_non_manifold     = ALLOWNONNANIFOLD(t);
+    parms.m_perform_improvement    = PERFORMIMPROVMENT(t);
+    parms.m_allow_vertex_movement  = ALLOWVERTEXMOVEMENT(t);
+    parms.m_use_fraction           = USEFRACTION(t);
+    parms.m_use_curvature_when_splitting  = USECURVATUREWHENSPLITING(t);
+    parms.m_use_curvature_when_collapsing = USECURVATUREWHENCOLLAPSING(t);
+    parms.m_min_edge_length   = SYSmax(MINEDGELENGTH(t), 1e-7);
+    parms.m_max_edge_length   = MAXEDGELENGTH(t);
+    parms.m_min_triangle_area = SYSmax(MINTRIANGLEAREA(t),  1e-7);
+    parms.m_max_volume_change = MAXVOLUMECHANGE(t);  
+    parms.m_edge_flip_min_length_change = SYSmax(EDGEFLIPMINLENGTH(t), 1e-7);
+    parms.m_merge_proximity_epsilon     = SYSmax(MERGEPROXIMITYEPS(t), 1e-7);
+
+    const int subdivisionscheme = SUBDIVISIONSCHEME(t);
+    std::shared_ptr<SubdivisionScheme> scheme;
+
+    switch(subdivisionscheme)
+    {
+        case MIDPOINT:
+            scheme = std::make_shared<MidpointScheme>(); break;
+        case BUTTERFLY:
+            scheme = std::make_shared<ButterflyScheme>(); break;
+        case MODIFIED_BUTTERFLY:
+            scheme = std::make_shared<ModifiedButterflyScheme>(); break;
+        case QUADRATIC_ERROR_MIN:
+            scheme = std::make_shared<QuadraticErrorMinScheme>(); break;
+        default:
+            scheme = std::make_shared<MidpointScheme>(); break;
+    }
+
+
+    parms.m_subdivision_scheme = scheme.get();
+    SurfTrack surface_tracker(positions, faces, masses, parms);
     // surface_tracker = std::make_shared<SurfTrack>(positions, faces, masses, p;
     surface_tracker.improve_mesh();
     
