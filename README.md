@@ -1,5 +1,5 @@
 # Edgy Eggs 
-Edgy Eggs is a collection of Houdini's operators which leverage some of popular geometry libraries developed during research conducted by some very smart people[1]. Under construction, not really useful.
+Edgy Eggs is a collection of Houdini's operators which leverage some of popular geometry libraries developed during research conducted by some very smart people[1][2][3]. Under construction, not really useful.
 
 ## libigl - A simple C++ geometry processing library
 [1]: http://libigl.github.io/libigl
