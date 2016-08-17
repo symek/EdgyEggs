@@ -33,8 +33,16 @@
 using namespace SOP_IGL;
 
 static PRM_Name names[] = {
+    PRM_Name("method",   "Deformation Method"),
     PRM_Name("energy",   "ARAP Energy"),
     PRM_Name("maxiter",  "Max interations"),
+};
+
+static PRM_Name  methodChoices[] =
+{
+    PRM_Name("0", "Biharmonic"),
+    PRM_Name("1", "ARAP"),
+    PRM_Name(0)
 };
 
 static PRM_Name  energyChoices[] =
@@ -47,13 +55,15 @@ static PRM_Name  energyChoices[] =
 };
 
 static PRM_Default     iterDefault(5);
+static PRM_ChoiceList  methodMenu(PRM_CHOICELIST_SINGLE,  methodChoices);
 static PRM_ChoiceList  energyMenu(PRM_CHOICELIST_SINGLE,  energyChoices);
 static PRM_Range       maxiterRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 50);
 
 PRM_Template
 SOP_IGLDeform::myTemplateList[] = {
-    PRM_Template(PRM_ORD,   1, &names[0], 0, &energyMenu, 0, 0),
-    PRM_Template(PRM_INT_J, 1, &names[1], &iterDefault, 0, &maxiterRange),
+    PRM_Template(PRM_ORD,   1, &names[0], 0, &methodMenu, 0, 0),
+    PRM_Template(PRM_ORD,   1, &names[1], 0, &energyMenu, 0, 0),
+    PRM_Template(PRM_INT_J, 1, &names[2], &iterDefault, 0, &maxiterRange),
     PRM_Template(),
 };
 
@@ -132,62 +142,121 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
     Eigen::RowVector3d mid;
     U = V;
 
-
-    GA_ROHandleF  pintoanimation_h(gdp->findAttribute(GA_ATTRIB_POINT, "pintoanimation"));
-    if (!pintoanimation_h.isValid()) {
-        addWarning(SOP_MESSAGE, "Can do anything without pintoanimation attribute.");
-        return error();
-    }
-
-    bool validPin = false;
-    GA_Offset ptoff;
-    GA_FOR_ALL_PTOFF(gdp, ptoff)
+    const int method = METHOD(t);
+    if (method == AS_RIGID_AS_POSSIBLE) // I'll keep it simple for now.
     {
-        const int pin = pintoanimation_h.get(ptoff);
-        if (!validPin && pin != 0)
-            validPin = true;
-        S[static_cast<int>(ptoff)] = pin;
-    }
-
-    if (!validPin) {
-         addWarning(SOP_MESSAGE, "At least one vertex has to be pinned.");
-        return error();
-    }
-
-    // vertices in selection
-    igl::colon<int>(0, V.rows()-1, b);
-    b.conservativeResize(std::stable_partition(b.data(), b.data()+b.size(),\
-        [&](int i)->bool{return S(i)>=0;})-b.data());
-   
-    // Centroid
-    mid = 0.5*(V.colwise().maxCoeff() + V.colwise().minCoeff());
-
-    // Precomputation
-    igl::ARAPData arap_data;
-    arap_data.energy = static_cast<igl::ARAPEnergyType>(ENERGY(t));
-    arap_data.max_iter = MAXITER(t);
-   
-    igl::arap_precomputation(V, F, V.cols(), b, arap_data);
-    Eigen::MatrixXd bc(b.size(),V.cols());
-
-    for(int i = 0;i<b.size();i++)
-    {
-      bc.row(i) = V2.row(b(i));
-    }
-
-    igl::arap_solve(bc, arap_data, U);
-
-    {
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) 
-        { 
-            const GA_Index ptidx = gdp->pointIndex(ptoff);  
-            UT_ASSERT((uint)ptidx < U.rows());
-            const UT_Vector3 pos(U((uint)ptidx, 0), U((uint)ptidx, 1), U((uint)ptidx, 2));
-            gdp->setPos3(ptoff, pos);
+        GA_ROHandleF  pintoanimation_h(gdp->findAttribute(GA_ATTRIB_POINT, "pintoanimation"));
+        if (!pintoanimation_h.isValid()) {
+            addWarning(SOP_MESSAGE, "Can do anything without pintoanimation attribute.");
+            return error();
         }
+
+        bool validPin = false;
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        {
+            const int pin = pintoanimation_h.get(ptoff);
+            if (!validPin && pin != 0)
+                validPin = true;
+            S[static_cast<int>(ptoff)] = pin;
+        }
+
+        if (!validPin) {
+             addWarning(SOP_MESSAGE, "At least one vertex has to be pinned.");
+            return error();
+        }
+        // vertices in selection
+        igl::colon<int>(0, V.rows()-1, b);
+        b.conservativeResize(std::stable_partition(b.data(), b.data()+b.size(),\
+            [&](int i)->bool{return S(i)>=0;})-b.data());
+        // Centroid
+        mid = 0.5*(V.colwise().maxCoeff() + V.colwise().minCoeff());
+        // Precomputation
+        igl::ARAPData arap_data;
+        arap_data.energy = static_cast<igl::ARAPEnergyType>(ENERGY(t));
+        arap_data.max_iter = MAXITER(t);
+        if (!igl::arap_precomputation(V, F, V.cols(), b, arap_data)) {
+            addWarning(SOP_MESSAGE, "Arap precomputation failed.");
+            return error();   
+        }
+        // Copy deformed coordinates. 
+        Eigen::MatrixXd bc(b.size(),V.cols());
+        for(int i = 0;i<b.size();i++) {
+          bc.row(i) = V2.row(b(i));
+        }
+        // Solve
+        igl::arap_solve(bc, arap_data, U);
+
+        {
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) { 
+                const GA_Index ptidx = gdp->pointIndex(ptoff);  
+                UT_ASSERT((uint)ptidx < U.rows());
+                const UT_Vector3 pos(U((uint)ptidx, 0), U((uint)ptidx, 1), U((uint)ptidx, 2));
+                gdp->setPos3(ptoff, pos);
+            }
+        }
+    } 
+
+    else if(method == BIHARMONIC_COORDINATES)
+    {
+         // Precomputation
+        {
+            Eigen::VectorXi b;
+            {
+                Eigen::VectorXi J = Eigen::VectorXi::LinSpaced(high.V.rows(),0,high.V.rows()-1);
+                Eigen::VectorXd sqrD;
+                Eigen::MatrixXd _2;
+                cout<<"Finding closest points..."<<endl;
+                igl::point_mesh_squared_distance(low.V,high.V,J,sqrD,b,_2);
+                assert(sqrD.minCoeff() < 1e-7 && "low.V should exist in high.V");
+            }
+            // force perfect positioning, rather have popping in low-res than high-res.
+            // The correct/elaborate thing to do is express original low.V in terms of
+            // linear interpolation (or extrapolation) via elements in (high.V,high.F)
+            igl::slice(high.V, b, 1, low.V);
+            // list of points --> list of singleton lists
+            std::vector<std::vector<int> > S;
+            igl::matrix_to_list(b, S);
+            std::cout << "Computing weights for " << b.size() <<
+            " handles at " << high.V.rows() << " vertices...\n";
+            // Technically k should equal 3 for smooth interpolation in 3d, but 2 is
+            // faster and looks OK
+            const int k = 2;
+            igl::biharmonic_coordinates(high.V, high.T, S, k, W);
+            std::cout<<"Reindexing...\n"
+            // Throw away interior tet-vertices, keep weights and indices of boundary
+            Eigen::VectorXi I, J;
+            igl::remove_unreferenced(high.V.rows(), high.F, I, J);
+            std::for_each(high.F.data(), high.F.data() + high.F.size(), [&I](int & a){a=I(a);});
+            std::for_each(b.data(), b.data() + b.size(), [&I](int & a){a=I(a);});
+            igl::slice(MatrixXd(high.V), J, 1, high.V);
+            igl::slice(MatrixXd(W), J, 1, W);
+        }
+
+        // Resize low res (high res will also be resized by affine precision of W)
+        low.V.rowwise() -= low.V.colwise().mean();
+        low.V /= (low.V.maxCoeff()-low.V.minCoeff());
+        low.V.rowwise() += RowVector3d(0,1,0);
+        low.U = low.V;
+        high.U = high.V;
+
+        arap_data.with_dynamics = true;
+        arap_data.max_iter = 10;
+        arap_data.energy = ARAP_ENERGY_TYPE_DEFAULT;
+        arap_data.h = 0.01;
+        arap_data.ym = 0.001;
+        if(!igl::arap_precomputation(low.V,low.T,3,VectorXi(),arap_data))
+        {
+            addWarning(SOP_MESSAGE, "Arap precomputation failed.")
+            return error();
+        }
+
+
     }
 
+
+    // 
     gdp->getP()->bumpDataId();
     return error();
 }

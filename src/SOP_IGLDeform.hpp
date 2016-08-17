@@ -11,6 +11,11 @@
 
 namespace SOP_IGL {
 
+enum deformation_method {
+    BIHARMONIC_COORDINATES,
+    AS_RIGID_AS_POSSIBLE
+}
+
 
 class SOP_IGLDeform : public SOP_Node
 {
@@ -34,6 +39,7 @@ protected:
 
 private:
     void    getGroups(UT_String &str)        { evalString(str, "group", 0, 0); }
+    int     METHOD(fpreal t)                 { return evalInt("method", 0, t); }
     int     ENERGY(fpreal t)                 { return evalInt("energy", 0, t); }
     int     MAXITER(fpreal t)                { return evalInt("maxiter", 0, t); }
 
