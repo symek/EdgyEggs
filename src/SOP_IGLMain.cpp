@@ -3,6 +3,7 @@
 #include <libShapeOp/src/Solver.h>>
 #include "SOP_IGLUVproject.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
+#include "SOP_IGLDeform.hpp"
 #include "SOP_ShapeOp.hpp"
 #include "SOP_Eltopo.hpp"
 
@@ -30,6 +31,15 @@ newSopOperator(OP_OperatorTable *table)
         SOP_IGLUVproject::myTemplateList,
         1,
         1,
+        0));
+
+    table->addOperator(new OP_Operator(
+        "IGLDeform",
+        "IGL Deform",
+        SOP_IGLDeform::myConstructor,
+        SOP_IGLDeform::myTemplateList,
+        2,
+        2,
         0));
 
 
