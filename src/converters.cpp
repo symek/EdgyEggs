@@ -8,8 +8,11 @@
 
 namespace SOP_IGL { 
 
+
 void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::MatrixXi &faces)
 {
+    points.clear(); faces.clear();
+    points.resize(gdp.getNumPoints(), 3);
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(&gdp, ptoff) {
         const UT_Vector3 pos = gdp.getPos3(ptoff);
@@ -18,9 +21,14 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::Matri
         points(static_cast<uint>(ptoff), 2) = pos.z();
     }
 
-    GA_Iterator it(gdp.getPrimitiveRange());
-    for (; !it.atEnd(); ++it) {
-        const GEO_Primitive *prim = gdp.getGEOPrimitive(*it);
+    UT_Array<const GA_Primitive *> prims;
+    const GA_PrimitiveTypeId type(GA_PRIMPOLY);
+    gdp.getPrimitivesOfType(type, prims);
+    faces.resize(prims.size(), 3);
+    UT_Array<const GA_Primitive*>::const_iterator it;
+    for (it = prims.begin(); !it.atEnd(); ++it) 
+    {
+        const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
         GA_Primitive::const_iterator vt;
         int vertex_index = 0;
         for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
@@ -29,6 +37,56 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::Matri
             vertex_index++;
         }
     }
+}
+
+void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
+                     Eigen::MatrixXi &faces, Eigen::MatrixXi &tetras)
+{
+    points.clear(); faces.clear(); tetrasc.clear();
+    points.resize(gdp.getNumPoints(), 3);
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(&gdp, ptoff) {
+        const UT_Vector3 pos = gdp.getPos3(ptoff);
+        points(static_cast<uint>(ptoff), 0) = pos.x();
+        points(static_cast<uint>(ptoff), 1) = pos.y(); 
+        points(static_cast<uint>(ptoff), 2) = pos.z();
+    }
+
+   { 
+       UT_Array<const GA_Primitive *> prims;
+       const GA_PrimitiveTypeId type(GA_PRIMPOLY);
+       gdp.getPrimitivesOfType(type, prims);
+       faces.resize(prims.size(), 3);
+       UT_Array<const GA_Primitive*>::const_iterator it;
+       for (it = prims.begin(); !it.atEnd(); ++it) {
+           const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
+           int vertex_index = 0;
+           GA_Primitive::const_iterator vt;
+           for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
+               const GA_Offset voff = vt.getPointOffset();
+               faces(prim->getMapIndex(), SYSmin(vertex_index, 2)) = static_cast<int>(voff);
+               vertex_index++;
+           }
+       }
+   }
+
+   { 
+        UT_Array<const GA_Primitive *> prims;
+       const GA_PrimitiveTypeId type(GA_PRIMTETRAHEDRON);
+       gdp.getPrimitivesOfType(type, prims);
+       tetras.resize(prims.size(), 4);
+       UT_Array<const GA_Primitive*>::const_iterator it;
+       for (it = prims.begin(); !it.atEnd(); ++it) {
+           const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
+           int vertex_index = 0;
+           GA_Primitive::const_iterator vt;
+           for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
+               const GA_Offset voff = vt.getPointOffset();
+               tetras(prim->getMapIndex(), SYSmin(vertex_index, 3)) = static_cast<int>(voff);
+               vertex_index++;
+           }
+       }
+   }
 }
 
 void eigen_to_detail(const Eigen::MatrixXd &points, const Eigen::MatrixXi &faces, GU_Detail &gdp)
