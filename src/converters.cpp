@@ -11,7 +11,7 @@ namespace SOP_IGL {
 
 void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::MatrixXi &faces)
 {
-    points.clear(); faces.clear();
+    points.resize(0,0); faces.resize(0,0);
     points.resize(gdp.getNumPoints(), 3);
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(&gdp, ptoff) {
@@ -42,7 +42,7 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::Matri
 void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
                      Eigen::MatrixXi &faces, Eigen::MatrixXi &tetras)
 {
-    points.clear(); faces.clear(); tetrasc.clear();
+    points.resize(0,0); faces.resize(0,0); tetras.resize(0,0);
     points.resize(gdp.getNumPoints(), 3);
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(&gdp, ptoff) {
