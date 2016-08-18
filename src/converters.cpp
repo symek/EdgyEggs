@@ -61,11 +61,13 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
        for (it = prims.begin(); !it.atEnd(); ++it) {
            const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
            int vertex_index = 0;
+           int primitive_index = 0;
            GA_Primitive::const_iterator vt;
            for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
                const GA_Offset voff = vt.getPointOffset();
-               faces(prim->getMapIndex(), SYSmin(vertex_index, 2)) = static_cast<int>(voff);
+               faces(primitive_index, SYSmin(vertex_index, 2)) = static_cast<int>(voff);
                vertex_index++;
+               primitive_index++;
            }
        }
    }
@@ -79,11 +81,14 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
        for (it = prims.begin(); !it.atEnd(); ++it) {
            const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
            int vertex_index = 0;
+           int primitive_index = 0;
            GA_Primitive::const_iterator vt;
            for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
                const GA_Offset voff = vt.getPointOffset();
-               tetras(prim->getMapIndex(), SYSmin(vertex_index, 3)) = static_cast<int>(voff);
+               //prim->getMapIndex() 
+               tetras(primitive_index, SYSmin(vertex_index, 3)) = static_cast<int>(voff);
                vertex_index++;
+               primitive_index++;
            }
        }
    }
