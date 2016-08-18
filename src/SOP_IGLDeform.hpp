@@ -14,8 +14,14 @@ namespace SOP_IGL {
 enum deformation_method {
     BIHARMONIC_COORDINATES,
     AS_RIGID_AS_POSSIBLE
-}
+};
 
+struct Mesh {
+    Eigen::MatrixXd V;
+    Eigen::MatrixXd U;
+    Eigen::MatrixXi F;
+    Eigen::MatrixXi T;
+};
 
 class SOP_IGLDeform : public SOP_Node
 {

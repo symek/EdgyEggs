@@ -1,12 +1,14 @@
 #include <igl/arap.h>
-#include <igl/colon.h>
-#include <igl/directed_edge_orientations.h>
-#include <igl/directed_edge_parents.h>
-#include <igl/forward_kinematics.h>
-#include <igl/PI.h>
-#include <igl/lbs_matrix.h>
-#include <igl/deform_skeleton.h>
-#include <igl/dqs.h>
+#include <igl/biharmonic_coordinates.h>
+#include <igl/cat.h>
+#include <igl/cotmatrix.h>
+#include <igl/massmatrix.h>
+#include <igl/matrix_to_list.h>
+#include <igl/parula.h>
+#include <igl/point_mesh_squared_distance.h>
+#include <igl/remove_unreferenced.h>
+#include <igl/slice.h>
+
 
 
 #include <Eigen/Geometry>
@@ -67,7 +69,6 @@ SOP_IGLDeform::myTemplateList[] = {
     PRM_Template(),
 };
 
-
 OP_Node *
 SOP_IGLDeform::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
 {
@@ -107,44 +108,40 @@ SOP_IGLDeform::cookInputGroups(OP_Context &context, int alone)
 OP_ERROR
 SOP_IGLDeform::cookMySop(OP_Context &context)
 {
-    
     OP_AutoLockInputs inputs(this);
     if (inputs.lock(context) >= UT_ERROR_ABORT)
         return error();
-     const GU_Detail *deform_gdp = inputGeo(1);
 
     fpreal t = context.getTime();
     duplicateSource(0, context);
 
-    if (gdp->getNumPoints() != deform_gdp->getNumPoints())
-    {
-        addError(SOP_ERR_MISMATCH_POINT, "Rest and deform geometry should match.");
-        return error();
-    }
-
-
     // Copy to eigen.
     gdp->convex(); // only triangles for now.
-    uint numPoints = gdp->getNumPoints();
-    uint numPrims  = gdp->getNumPrimitives();
-    Eigen::MatrixXd V(numPoints, 3); // points
-    Eigen::MatrixXi F(numPrims, 3); // faces
-    Eigen::MatrixXd V2(numPoints, 3); // points
-    Eigen::MatrixXi F2(numPrims, 3); // faces
-
-    SOP_IGL::detail_to_eigen(*gdp, V, F);
-    SOP_IGL::detail_to_eigen(*deform_gdp, V2, F2);
-
-
-    Eigen::MatrixXd U;
-    Eigen::VectorXi S(numPoints);
-    Eigen::VectorXi b;
-    Eigen::RowVector3d mid;
-    U = V;
 
     const int method = METHOD(t);
     if (method == AS_RIGID_AS_POSSIBLE) // I'll keep it simple for now.
     {
+        const GU_Detail *deform_gdp = inputGeo(1);
+        if (gdp->getNumPoints() != deform_gdp->getNumPoints())
+        {
+            addError(SOP_ERR_MISMATCH_POINT, "Rest and deform geometry should match.");
+            return error();
+        }
+        
+        uint numPoints = gdp->getNumPoints();
+        uint numPrims  = gdp->getNumPrimitives();
+
+        Eigen::MatrixXd V, V2;
+        Eigen::MatrixXi F, F2; // they will be allocated in detail_to_eigen()
+
+        SOP_IGL::detail_to_eigen(*gdp, V, F);
+        SOP_IGL::detail_to_eigen(*deform_gdp, V2, F2);
+
+        Eigen::MatrixXd U;
+        Eigen::VectorXi S(numPoints);
+        Eigen::VectorXi b;
+        Eigen::RowVector3d mid;
+        U = V;
         GA_ROHandleF  pintoanimation_h(gdp->findAttribute(GA_ATTRIB_POINT, "pintoanimation"));
         if (!pintoanimation_h.isValid()) {
             addWarning(SOP_MESSAGE, "Can do anything without pintoanimation attribute.");
@@ -200,15 +197,46 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
 
     else if(method == BIHARMONIC_COORDINATES)
     {
-         // Precomputation
+        Eigen::MatrixXd W;
+        igl::ARAPData arap_data;
+        SOP_IGL::Mesh low, high, scene;
+
+        const GU_Detail *rest_gdp   = inputGeo(1);
+        const GU_Detail *deform_gdp = inputGeo(2);
+
+        if (!rest_gdp || !deform_gdp) {
+            addWarning(SOP_MESSAGE, "Needs second and thrid input.");
+            return error();
+        }
+
+        if (rest_gdp->getNumPoints() != deform_gdp->getNumPoints())
         {
+            addError(SOP_ERR_MISMATCH_POINT, "Rest and deform geometry should match.");
+            return error();
+        }
+
+        std::cout << "before detail_to_eigen() \n";
+        SOP_IGL::detail_to_eigen(*rest_gdp, low.V, low.F, low.T);
+        SOP_IGL::detail_to_eigen(*gdp, high.V, high.F, high.T);
+        std::cout << "after detail_to_eigen() \n";
+        // std::cout << low.V.rows() << "x" << low.V.cols() << "\n";
+        // std::cout << low.F.rows() << "x" << low.F.cols() << "\n";
+        // std::cout << low.T.rows() << "x" << low.T.cols() << "\n";
+
+        // std::cout << high.V.rows() << "x" << high.V.cols() << "\n";
+        // std::cout << high.F.rows() << "x" << high.F.cols() << "\n";
+        // std::cout << high.T.rows() << "x" << high.T.cols() << "\n";
+       
+        // Precomputation
+        {
+            std::cout << "beforeEigen::VectorXi::LinSpaced() \n";
             Eigen::VectorXi b;
             {
                 Eigen::VectorXi J = Eigen::VectorXi::LinSpaced(high.V.rows(),0,high.V.rows()-1);
                 Eigen::VectorXd sqrD;
                 Eigen::MatrixXd _2;
-                cout<<"Finding closest points..."<<endl;
-                igl::point_mesh_squared_distance(low.V,high.V,J,sqrD,b,_2);
+                std::cout<<"Finding closest points...\n";
+                igl::point_mesh_squared_distance(low.V, high.V, J, sqrD, b, _2);
                 assert(sqrD.minCoeff() < 1e-7 && "low.V should exist in high.V");
             }
             // force perfect positioning, rather have popping in low-res than high-res.
@@ -223,34 +251,65 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
             // Technically k should equal 3 for smooth interpolation in 3d, but 2 is
             // faster and looks OK
             const int k = 2;
-            igl::biharmonic_coordinates(high.V, high.T, S, k, W);
-            std::cout<<"Reindexing...\n"
+            std::cout << " Before biharmonic_coordinates \n";
+            std::cout << low.V.rows() << "x" << low.V.cols() << "\n";
+            std::cout << low.T.rows() << "x" << low.T.cols() << "\n";
+            std::cout << high.V.rows() << "x" << high.V.cols() << "\n";
+            std::cout << high.T.rows() << "x" << high.T.cols() << "\n";
+            std::cout << W.rows() << "x" << W.cols() << "\n";
+            std::cout << S.size() << "\n";
+            igl::biharmonic_coordinates(high.V,high.T,S,k,W);
+            std::cout << W.rows() << "x" << W.cols() << "\n";
+            // igl::biharmonic_coordinates(high.V, high.T, S, k, W);
+            std::cout<<"Reindexing...\n";
             // Throw away interior tet-vertices, keep weights and indices of boundary
             Eigen::VectorXi I, J;
             igl::remove_unreferenced(high.V.rows(), high.F, I, J);
             std::for_each(high.F.data(), high.F.data() + high.F.size(), [&I](int & a){a=I(a);});
             std::for_each(b.data(), b.data() + b.size(), [&I](int & a){a=I(a);});
-            igl::slice(MatrixXd(high.V), J, 1, high.V);
-            igl::slice(MatrixXd(W), J, 1, W);
+            igl::slice(Eigen::MatrixXd(high.V), J, 1, high.V);
+            igl::slice(Eigen::MatrixXd(W), J, 1, W);
         }
 
         // Resize low res (high res will also be resized by affine precision of W)
         low.V.rowwise() -= low.V.colwise().mean();
         low.V /= (low.V.maxCoeff()-low.V.minCoeff());
-        low.V.rowwise() += RowVector3d(0,1,0);
+        low.V.rowwise() += Eigen::RowVector3d(0,1,0);
         low.U = low.V;
         high.U = high.V;
 
-        arap_data.with_dynamics = true;
-        arap_data.max_iter = 10;
-        arap_data.energy = ARAP_ENERGY_TYPE_DEFAULT;
-        arap_data.h = 0.01;
-        arap_data.ym = 0.001;
-        if(!igl::arap_precomputation(low.V,low.T,3,VectorXi(),arap_data))
+        arap_data.max_iter = MAXITER(t);
+        arap_data.energy = static_cast<igl::ARAPEnergyType>(ENERGY(t));
+        if(!igl::arap_precomputation(low.V, low.T, 3, Eigen::VectorXi(), arap_data))
         {
-            addWarning(SOP_MESSAGE, "Arap precomputation failed.")
+            addWarning(SOP_MESSAGE, "Arap precomputation failed.");
             return error();
         }
+
+       { 
+            GA_Offset ptoff;
+           GA_FOR_ALL_PTOFF(deform_gdp, ptoff) {
+               const UT_Vector3 pos = deform_gdp->getPos3(ptoff);
+               low.U(static_cast<uint>(ptoff), 0) = pos.x();
+               low.U(static_cast<uint>(ptoff), 1) = pos.y(); 
+               low.U(static_cast<uint>(ptoff), 2) = pos.z();
+           }
+        }
+
+
+        arap_solve(Eigen::MatrixXd(0,3), arap_data, low.U);
+
+
+        {
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) { 
+                const GA_Index ptidx = gdp->pointIndex(ptoff);  
+                UT_ASSERT((uint)ptidx < high.U.rows());
+                const UT_Vector3 pos(high.U((uint)ptidx, 0), high.U((uint)ptidx, 1), high.U((uint)ptidx, 2));
+                gdp->setPos3(ptoff, pos);
+            }
+        }
+
 
 
     }

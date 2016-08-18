@@ -39,7 +39,7 @@ newSopOperator(OP_OperatorTable *table)
         SOP_IGLDeform::myConstructor,
         SOP_IGLDeform::myTemplateList,
         2,
-        2,
+        3,
         0));
 
 
