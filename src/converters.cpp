@@ -29,12 +29,10 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points, Eigen::Matri
     for (it = prims.begin(); !it.atEnd(); ++it) 
     {
         const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
-        GA_Primitive::const_iterator vt;
-        int vertex_index = 0;
-        for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
-            const GA_Offset voff = vt.getPointOffset();
-            faces(prim->getMapIndex(), SYSmin(vertex_index, 2)) = static_cast<int>(voff);
-            vertex_index++;
+        const int vertex_count    = prim->getVertexCount();
+        for (int vt=0; vt<vertex_count; ++vt) {
+            const GA_Offset voff = prim->getPointOffset(vt);
+            faces(prim->getMapIndex(), SYSmin(vt, 2)) = static_cast<int>(voff);
         }
     }
 }
@@ -60,13 +58,11 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
        UT_Array<const GA_Primitive*>::const_iterator it;
        for (it = prims.begin(); !it.atEnd(); ++it) {
            const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
-           int vertex_index = 0;
            int primitive_index = 0;
-           GA_Primitive::const_iterator vt;
-           for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
-               const GA_Offset voff = vt.getPointOffset();
-               faces(primitive_index, SYSmin(vertex_index, 2)) = static_cast<int>(voff);
-               vertex_index++;
+           const int vertex_count = prim->getVertexCount();
+           for (int vt=0; vt<vertex_count; ++vt) {
+               const GA_Offset voff = prim->getPointOffset(vt);
+               faces(primitive_index, SYSmin(vt, 2)) = static_cast<int>(voff);
                primitive_index++;
            }
        }
@@ -80,14 +76,11 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
        UT_Array<const GA_Primitive*>::const_iterator it;
        for (it = prims.begin(); !it.atEnd(); ++it) {
            const GEO_Primitive *prim = static_cast<const GEO_Primitive*>(*it);
-           int vertex_index = 0;
            int primitive_index = 0;
-           GA_Primitive::const_iterator vt;
-           for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
-               const GA_Offset voff = vt.getPointOffset();
-               //prim->getMapIndex() 
-               tetras(primitive_index, SYSmin(vertex_index, 3)) = static_cast<int>(voff);
-               vertex_index++;
+           const int vertex_count = prim->getVertexCount(); 
+           for (int vt=0; vt<vertex_count; ++vt) {
+               const GA_Offset voff = prim->getPointOffset(vt); 
+               tetras(primitive_index, SYSmin(vt, 3)) = static_cast<int>(voff);
                primitive_index++;
            }
        }

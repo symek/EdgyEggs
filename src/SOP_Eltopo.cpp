@@ -161,14 +161,14 @@ SOP_Eltopo::cookMySop(OP_Context &context)
     for (; !it.atEnd(); ++it)
     {
         const GEO_Primitive *prim = gdp->getGEOPrimitive(*it);
-        GA_Primitive::const_iterator vt;
+        const int vertex_count = prim->getVertexCount();
         Vec3st v;
-        int vertex_index = 0;
-        for (prim->beginVertex(vt); !vt.atEnd(); ++vt) {
-            const GA_Offset voff = vt.getPointOffset();
+        // int vertex_index = 0;
+        for (int vt=0; vt<vertex_count; ++vt) {
+            const GA_Offset voff = prim->getPointOffset(vt);
             const int ptidx      = gdp->pointIndex(voff);
-            v[SYSmin(vertex_index,2)] = static_cast<int>(ptidx);
-            vertex_index++;
+            v[SYSmin(vt,2)] = static_cast<int>(ptidx);
+            // vertex_index++;
         }
         faces.push_back(v);
     }
