@@ -148,18 +148,23 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
             return error();
         }
 
-        bool validPin = false;
+        bool pinned_vertex_exists = false;
+        bool free_vertex_exists = false;
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff)
         {
             const int pin = pintoanimation_h.get(ptoff);
-            if (!validPin && pin != 0)
-                validPin = true;
+
+            if (pin == -1)
+                free_vertex_exists = true;
+            if (pin == 1)
+                pinned_vertex_exists = true;
+
             S[static_cast<int>(ptoff)] = pin;
         }
 
-        if (!validPin) {
-             addWarning(SOP_MESSAGE, "At least one vertex has to be pinned.");
+        if (!pinned_vertex_exists || !free_vertex_exists) {
+             addWarning(SOP_MESSAGE, "At least one vertex has to be pinned and some should be free.");
             return error();
         }
         // vertices in selection
@@ -182,11 +187,22 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
           bc.row(i) = V2.row(b(i));
         }
         // Solve
-        igl::arap_solve(bc, arap_data, U);
+
+        try {
+            igl::arap_solve(bc, arap_data, U);
+        }
+        catch (...)
+        {
+            addWarning(SOP_MESSAGE, "Can't solve arap...");
+            return error();
+        }
 
         {
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) { 
+                const int pin = pintoanimation_h.get(ptoff);
+                // if (pin == 1)
+                //     continue;
                 const GA_Index ptidx = gdp->pointIndex(ptoff);  
                 UT_ASSERT((uint)ptidx < U.rows());
                 const UT_Vector3 pos(U((uint)ptidx, 0), U((uint)ptidx, 1), U((uint)ptidx, 2));
