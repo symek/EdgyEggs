@@ -13,7 +13,8 @@ namespace SOP_IGL {
 
 enum deformation_method {
     BIHARMONIC_COORDINATES,
-    AS_RIGID_AS_POSSIBLE
+    AS_RIGID_AS_POSSIBLE,
+    DIRECT_MORPH_TARGET
 };
 
 struct Mesh {

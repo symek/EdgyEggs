@@ -44,6 +44,7 @@ static PRM_Name  methodChoices[] =
 {
     PRM_Name("0", "Biharmonic"),
     PRM_Name("1", "ARAP"),
+    PRM_Name("2", "Direct BlendShape"), 
     PRM_Name(0)
 };
 
@@ -117,9 +118,105 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
 
     // Copy to eigen.
     gdp->convex(); // only triangles for now.
+    const GA_Size npoints = gdp->getNumPoints();
+    const GA_Size nprims  = gdp->getNumPrimitives();
 
     const int method = METHOD(t);
-    if (method == AS_RIGID_AS_POSSIBLE) // I'll keep it simple for now.
+
+    if (method == DIRECT_MORPH_TARGET) {
+        
+        std::vector<const GU_Detail*> shapes;
+        for (unsigned i=1; i < nConnectedInputs(); ++i) {
+            const GU_Detail* shape = inputGeo(i);
+            // 
+            if (shape->getNumPoints() != npoints) {
+                addWarning(SOP_ERR_MISMATCH_POINT, \
+                    "Some blendshapes doesn't match rest pose point count!");
+                continue;
+            }
+            shapes.push_back(shape);
+        }
+        
+        Eigen::MatrixXd blends_mat(npoints*3, shapes.size());
+        Eigen::VectorXd delta(npoints*3);
+
+        unsigned col = 0;
+        GA_Offset ptoff;
+
+        std::vector<const GU_Detail*>::const_iterator it;
+        for(it=shapes.begin(); it != shapes.end(); it++) {
+            const GU_Detail * shape = *it;
+            GA_FOR_ALL_PTOFF(shape, ptoff) {
+                const UT_Vector3 rest_pt_pos  = gdp->getPos3(ptoff);
+                const GA_Size    rest_pt_itx  = gdp->getPointMap().indexFromOffset(ptoff);
+                const GA_Offset  shape_pt_off = shape->getPointMap().offsetFromIndex(rest_pt_itx);
+                const UT_Vector3 shape_pt_pos = shape->getPos3(shape_pt_off);
+                const UT_Vector3 shape_delta(shape_pt_pos - rest_pt_pos);
+                blends_mat(3*rest_pt_itx + 0, col) = shape_delta.x();
+                blends_mat(3*rest_pt_itx + 1, col) = shape_delta.y(); 
+                blends_mat(3*rest_pt_itx + 2, col) = shape_delta.z();
+            }
+         col++;
+        }
+
+        // vel is just displace of a points
+        GA_ROHandleV3  vel_h(gdp->findAttribute(GA_ATTRIB_POINT, "v"));
+
+        if (!vel_h.isValid()) {
+            addWarning(SOP_ERR_NO_DEFORM_EFFECT, "Can't do anything without v point attribute.");
+            return error();
+        }
+
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            const GA_Size ptidx = gdp->getPointMap().indexFromOffset(ptoff);
+            const UT_Vector3 vel = vel_h.get(ptoff);
+            delta(3*ptidx + 0) = vel.x();
+            delta(3*ptidx + 1) = vel.y();
+            delta(3*ptidx + 2) = vel.z();
+        }
+
+
+        // Orthonormalize blends
+        Eigen::HouseholderQR<Eigen::MatrixXd> orthonormal_mat(blends_mat);
+        Eigen::MatrixXd Q = orthonormal_mat.householderQ();
+        Eigen::MatrixXd R = orthonormal_mat.matrixQR().triangularView<Eigen::Upper>();
+
+        // scalar product of delta and Q's columns:
+        Eigen::MatrixXd weights_mat = delta.asDiagonal() * Q;
+
+        // return back to non orthonormal space?
+        weights_mat *= R;
+
+        // Get weights out of this: 
+        Eigen::VectorXd weights = weights_mat.colwise().sum();
+
+        std::cout << "weights: \n" << weights << '\n';
+
+        // move to point array attrib?
+        // GA_Size nshapes;
+        GA_RWHandleRA w_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "weights", shapes.size()));
+        // Temporarly apply blendshapes based on computed weights.
+        {
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                UT_FprealArray weights_array(shapes.size());
+                const GA_Size ptidx = gdp->getPointMap().indexFromOffset(ptoff);
+                UT_Vector3 disp(0,0,0);
+                for(int col=0; col<shapes.size(); ++col) {
+                    const float xd = blends_mat(3*ptidx + 0, col);
+                    const float yd = blends_mat(3*ptidx + 1, col);
+                    const float zd = blends_mat(3*ptidx + 2, col);
+                    const float w  = weights(col) * 3.0f; //
+                    weights_array(col) = w;
+                    disp += UT_Vector3(xd, yd, zd) * w;
+                }
+                // w_h.setV(ptoff, weights_array, shapes.size());
+                UT_Vector3 pos = gdp->getPos3(ptoff);
+                gdp->setPos3(ptoff, pos + disp);
+            }
+        }
+    }
+
+    else if (method == AS_RIGID_AS_POSSIBLE) // I'll keep it simple for now.
     {
         const GU_Detail *deform_gdp = inputGeo(1);
         if (gdp->getNumPoints() != deform_gdp->getNumPoints())
@@ -128,8 +225,6 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
             return error();
         }
         
-        uint numPoints = gdp->getNumPoints();
-        uint numPrims  = gdp->getNumPrimitives();
 
         Eigen::MatrixXd V, V2;
         Eigen::MatrixXi F, F2; // they will be allocated in detail_to_eigen()
@@ -138,7 +233,7 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
         SOP_IGL::detail_to_eigen(*deform_gdp, V2, F2);
 
         Eigen::MatrixXd U;
-        Eigen::VectorXi S(numPoints);
+        Eigen::VectorXi S(npoints);
         Eigen::VectorXi b;
         Eigen::RowVector3d mid;
         U = V;
