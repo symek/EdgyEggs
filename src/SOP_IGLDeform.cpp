@@ -144,19 +144,18 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
         GA_Offset ptoff;
 
         std::vector<const GU_Detail*>::const_iterator it;
-        for(it=shapes.begin(); it != shapes.end(); it++) {
+        for(it=shapes.begin(); it != shapes.end(); it++, ++col) {
             const GU_Detail * shape = *it;
             GA_FOR_ALL_PTOFF(shape, ptoff) {
                 const UT_Vector3 rest_pt_pos  = gdp->getPos3(ptoff);
-                const GA_Size    rest_pt_itx  = gdp->getPointMap().indexFromOffset(ptoff);
-                const GA_Offset  shape_pt_off = shape->getPointMap().offsetFromIndex(rest_pt_itx);
+                const GA_Index   rest_pt_itx  = gdp->pointIndex(ptoff);
+                const GA_Offset  shape_pt_off = shape->pointOffset(rest_pt_itx);
                 const UT_Vector3 shape_pt_pos = shape->getPos3(shape_pt_off);
                 const UT_Vector3 shape_delta(shape_pt_pos - rest_pt_pos);
                 blends_mat(3*rest_pt_itx + 0, col) = shape_delta.x();
                 blends_mat(3*rest_pt_itx + 1, col) = shape_delta.y(); 
                 blends_mat(3*rest_pt_itx + 2, col) = shape_delta.z();
             }
-         col++;
         }
 
         // vel is just displace of a points
@@ -168,7 +167,7 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
         }
 
         GA_FOR_ALL_PTOFF(gdp, ptoff) {
-            const GA_Size ptidx = gdp->getPointMap().indexFromOffset(ptoff);
+            const GA_Index ptidx = gdp->pointIndex(ptoff);
             const UT_Vector3 vel = vel_h.get(ptoff);
             delta(3*ptidx + 0) = vel.x();
             delta(3*ptidx + 1) = vel.y();
@@ -184,7 +183,8 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
         // scalar product of delta and Q's columns:
         Eigen::MatrixXd weights_mat = delta.asDiagonal() * Q;
 
-        // return back to non orthonormal space?
+        // return back to non orthonormal space
+        // we lost scaling though... 
         weights_mat *= R;
 
         // Get weights out of this: 
@@ -192,24 +192,28 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
 
         std::cout << "weights: \n" << weights << '\n';
 
-        // move to point array attrib?
-        // GA_Size nshapes;
-        GA_RWHandleRA w_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "weights", shapes.size()));
+        // move blendshape's weights into detail attribute
+        GA_Attribute * w_attrib = gdp->addFloatArray(GA_ATTRIB_DETAIL, "weights", 1);
+        const GA_AIFNumericArray * w_aif = w_attrib->getAIFNumericArray();
+        UT_FprealArray weights_array(shapes.size());
+        for(int i=0;i<shapes.size(); ++i) {
+            weights_array.append(weights(i));
+        }
+        w_aif->set(w_attrib, 0, weights_array);
+        w_attrib->bumpDataId();
+        
         // Temporarly apply blendshapes based on computed weights.
         {
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
-                UT_FprealArray weights_array(shapes.size());
-                const GA_Size ptidx = gdp->getPointMap().indexFromOffset(ptoff);
+                const GA_Size ptidx = gdp->pointIndex(ptoff);
                 UT_Vector3 disp(0,0,0);
                 for(int col=0; col<shapes.size(); ++col) {
                     const float xd = blends_mat(3*ptidx + 0, col);
                     const float yd = blends_mat(3*ptidx + 1, col);
                     const float zd = blends_mat(3*ptidx + 2, col);
                     const float w  = weights(col) * 3.0f; //
-                    weights_array(col) = w;
                     disp += UT_Vector3(xd, yd, zd) * w;
                 }
-                // w_h.setV(ptoff, weights_array, shapes.size());
                 UT_Vector3 pos = gdp->getPos3(ptoff);
                 gdp->setPos3(ptoff, pos + disp);
             }
