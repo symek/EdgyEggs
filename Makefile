@@ -1,12 +1,12 @@
 # Minimal Makefile
 INSTDIR = $(HIH)
 SOURCES =  ./src/converters.cpp\
-   ./src/SOP_IGLUVproject.cpp\
-   ./src/SOP_IGLDiscreteGeo.cpp\
    ./src/SOP_IGLDeform.cpp\
-   ./src/SOP_ShapeOp.cpp\
-   ./src/SOP_Eltopo.cpp\
    ./src/SOP_IGLMain.cpp
+   # ./src/SOP_IGLUVproject.cpp\
+   # ./src/SOP_IGLDiscreteGeo.cpp\
+   # ./src/SOP_ShapeOp.cpp\
+   # ./src/SOP_Eltopo.cpp\
 
 INCDIRS = -I$(HOME)/work/eigen\
 	-I$(HOME)/work/libigl/include\

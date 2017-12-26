@@ -14,24 +14,24 @@ using namespace SOP_ELTOPO;
 void
 newSopOperator(OP_OperatorTable *table)
 {
-    table->addOperator(new OP_Operator(
-        "IGLDiscreteGeo",
-        "IGL Discrete Geometry",
-        SOP_IGLDiscreteGeometry::myConstructor,
-        SOP_IGLDiscreteGeometry::myTemplateList,
-        1,
-        1,
-        0));
+    // table->addOperator(new OP_Operator(
+    //     "IGLDiscreteGeo",
+    //     "IGL Discrete Geometry",
+    //     SOP_IGLDiscreteGeometry::myConstructor,
+    //     SOP_IGLDiscreteGeometry::myTemplateList,
+    //     1,
+    //     1,
+    //     0));
 
 
-    table->addOperator(new OP_Operator(
-        "IGLUVProject",
-        "IGL UV Project",
-        SOP_IGLUVproject::myConstructor,
-        SOP_IGLUVproject::myTemplateList,
-        1,
-        1,
-        0));
+    // table->addOperator(new OP_Operator(
+    //     "IGLUVProject",
+    //     "IGL UV Project",
+    //     SOP_IGLUVproject::myConstructor,
+    //     SOP_IGLUVproject::myTemplateList,
+    //     1,
+    //     1,
+    //     0));
 
     table->addOperator(new OP_Operator(
         "IGLDeform",
@@ -39,25 +39,25 @@ newSopOperator(OP_OperatorTable *table)
         SOP_IGLDeform::myConstructor,
         SOP_IGLDeform::myTemplateList,
         2,
-        3,
+        1000,
         0));
 
 
-	 table->addOperator(new OP_Operator(
-        "ShapeOp",
-        "ShapeOp",
-        SOP_ShapeOp::myConstructor,
-        SOP_ShapeOp::myTemplateList,
-        2,
-        3,
-        0));   
+	 // table->addOperator(new OP_Operator(
+  //       "ShapeOp",
+  //       "ShapeOp",
+  //       SOP_ShapeOp::myConstructor,
+  //       SOP_ShapeOp::myTemplateList,
+  //       2,
+  //       3,
+  //       0));   
 
-    table->addOperator(new OP_Operator(
-        "Eltopo",
-        "Eltopo",
-        SOP_Eltopo::myConstructor,
-        SOP_Eltopo::myTemplateList,
-        1,
-        2,
-        0)); 
+  //   table->addOperator(new OP_Operator(
+  //       "Eltopo",
+  //       "Eltopo",
+  //       SOP_Eltopo::myConstructor,
+  //       SOP_Eltopo::myTemplateList,
+  //       1,
+  //       2,
+  //       0)); 
 }
