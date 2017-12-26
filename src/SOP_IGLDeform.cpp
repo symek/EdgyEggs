@@ -177,15 +177,15 @@ SOP_IGLDeform::cookMySop(OP_Context &context)
 
         // Orthonormalize blends
         Eigen::HouseholderQR<Eigen::MatrixXd> orthonormal_mat(blends_mat);
-        Eigen::MatrixXd Q = orthonormal_mat.householderQ();
-        Eigen::MatrixXd R = orthonormal_mat.matrixQR().triangularView<Eigen::Upper>();
+        // Eigen::MatrixXd Q = orthonormal_mat.householderQ();
+        // Eigen::MatrixXd R = orthonormal_mat.matrixQR().triangularView<Eigen::Upper>();
 
         // scalar product of delta and Q's columns:
-        Eigen::MatrixXd weights_mat = delta.asDiagonal() * Q;
+        Eigen::MatrixXd weights_mat = delta.asDiagonal() * orthonormal_mat.matrixQR();//Q;
 
         // return back to non orthonormal space
         // we lost scaling though... 
-        weights_mat *= R;
+        // weights_mat *= R;
 
         // Get weights out of this: 
         Eigen::VectorXd weights = weights_mat.colwise().sum();
