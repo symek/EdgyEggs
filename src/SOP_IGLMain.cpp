@@ -52,12 +52,12 @@ newSopOperator(OP_OperatorTable *table)
         3,
         0));   
 
-    table->addOperator(new OP_Operator(
-        "Eltopo",
-        "Eltopo",
-        SOP_Eltopo::myConstructor,
-        SOP_Eltopo::myTemplateList,
-        1,
-        2,
-        0)); 
+    // table->addOperator(new OP_Operator(
+    //     "Eltopo",
+    //     "Eltopo",
+    //     SOP_Eltopo::myConstructor,
+    //     SOP_Eltopo::myTemplateList,
+    //     1,
+    //     2,
+    //     0)); 
 }
