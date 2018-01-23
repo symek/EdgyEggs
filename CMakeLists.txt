@@ -10,7 +10,8 @@ include_directories(${CMAKE_SOURCE_DIR}/external/eigen)
 include_directories(${CMAKE_SOURCE_DIR}/external/libigl/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/ShapeOp.0.1.0)
 # ?
-include_directories(${CMAKE_SOURCE_DIR}/external/eltopo)
+include_directories(${CMAKE_SOURCE_DIR}/external/eltopo/eltopo3d)
+include_directories(${CMAKE_SOURCE_DIR}/external/eltopo/common)
 
 # Add a library with two source files.
 set( library_name SOP_EdgyEggs )
