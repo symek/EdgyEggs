@@ -4,6 +4,7 @@
 #include <igl/principal_curvature.h>
 #include <igl/grad.h>
 #include <igl/parula.h>
+#include <igl/eigs.h>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -40,8 +41,8 @@ SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
     PRM_Template(PRM_TOGGLE, 1, &names[2], PRMzeroDefaults),
     PRM_Template(PRM_STRING, 1, &names[3], 0),
-    PRM_Template(PRM_FLT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
-    PRM_Template(PRM_TOGGLE, 1, &names[5], PRMzeroDefaults),
+    PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_INT_J , 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
     PRM_Template(),
 };
 
@@ -294,17 +295,22 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         }
     }
     
-    // This won't compile with Eigen > 3.2.8
-    #if 0
-     /*  Eigen decompositon*/
-    if (EIGENVECTORS(t)) 
+    // Thisize_ts won't compile with Eigen > 3.2.8
+    #if 1
+    /*  Eigen decompositon*/
+    const size_t eigenvectors = EIGENVECTORS(t);
+    if (eigenvectors != 0) 
     {
+        Eigen::SparseMatrix<double> L, M;
         igl::cotmatrix(V,F,L);
         L = (-L).eval();
 
         igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_DEFAULT, M);
+        int c = 0;
+        bool  twod = V.col(2).minCoeff()==V.col(2).maxCoeff();
+        double bbd = (V.colwise().maxCoeff()-V.colwise().minCoeff()).norm();
 
-        const size_t k = 5;
+        const size_t k = eigenvectors;
         Eigen::VectorXd D;
         Eigen::MatrixXd U;
         if(!igl::eigs(L, M, k+1, igl::EIGS_TYPE_SM, U, D)) {
@@ -313,8 +319,26 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         }
 
         U = ((U.array()-U.minCoeff())/(U.maxCoeff()-U.minCoeff())).eval();
+        U = U.rightCols(k).eval();
+        std::cout << U << '\n';
 
-        //....
+        // Rescale eigen vectors for visualization
+        Eigen::VectorXd Z = bbd*0.5*U.col(c);
+        Eigen::MatrixXd C;
+        igl::parula(U.col(c).eval(),false,C);
+        GA_Attribute * cd_a = gdp->addFloatTuple(GA_ATTRIB_POINT, "Cd", 3);
+        GA_RWHandleV3 cd_h(cd_a);
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            const GA_Index ptidx = gdp->pointIndex(ptoff);
+            if ((uint)ptidx < C.rows()) 
+            {
+                const UT_Vector3 clr(C((uint)ptidx, 0),
+                                     C((uint)ptidx, 1),
+                                     C((uint)ptidx, 2));
+                cd_h.set(ptoff, clr);
+            }
+        }
     }
 
     #endif
