@@ -7,8 +7,11 @@
 #include <SYS/SYS_Math.h>
 
 #include <ICP.h>
-// #include "pcl_fpfh.hpp"
-// #include "intel_fgr.hpp"
+
+#ifdef BUILD_WITH_INTEL_FGR
+#include "pcl_fpfh.hpp"
+#include "intel_fgr.hpp"
+#endif
 
 #include "SOP_PCAlign.hpp"
 
@@ -73,7 +76,7 @@ static PRM_ChoiceList  weightMenu(PRM_CHOICELIST_SINGLE, weightFuncChoices);
 
 static PRM_Default alphaDefault(1.2);
 static PRM_Default maxmuDefault(1e5);
-static PRM_Default maxicpDefault(100);
+static PRM_Default maxicpDefault(10);
 static PRM_Default stopDefault(1e-5);
 
 
@@ -228,7 +231,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         }
 
     } 
-    #if 0
+    #ifdef BUILD_WITH_INTEL_FGR
     else if (method == ALIGN_METHOD::INTEL_FGR) {
         sop_pcl::Points::Ptr       points (new sop_pcl::Points);
         sop_pcl::Normals::Ptr      normals(new sop_pcl::Normals);
@@ -257,8 +260,8 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         FastGlobalRegistration ifgr; 
         ifgr.pointcloud_.push_back(positions);
         ifgr.features_.push_back(features);
-        ifgr.NormalizePoints();
-        ifgr.AdvancedMatching();
+        // ifgr.NormalizePoints();
+        // ifgr.AdvancedMatching();
         // ifgr.OptimizePairwise(true, ITERATION_NUMBER); 
         // Eigen::Matrix4f t = ifgr.GetTrans();
 
@@ -289,7 +292,6 @@ SOP_PCAlign::cookMySop(OP_Context &context)
 
         // gdp->getP()->bumpDataId();
         // return error();
-
     }
     #endif
 
