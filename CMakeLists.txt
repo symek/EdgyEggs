@@ -11,6 +11,6 @@ set (edgyeggs_version_minor       2)
 set (edgyeggs_version_patch       0)
 
 add_subdirectory (src/SOP_IGLDeform)
-# add_subdirectory (src/SOP_IGLDiscreteGeo)
+add_subdirectory (src/SOP_IGLDiscreteGeo)
 # add_subdirectory (src/SOP_IGLUVproject)
 # add_subdirectory (src/SOP_ShapeOp)
