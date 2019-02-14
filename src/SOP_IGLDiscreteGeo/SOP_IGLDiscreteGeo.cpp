@@ -9,6 +9,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
 #include <OP/OP_Operator.h>
@@ -19,10 +20,24 @@
 #include <UT/UT_Matrix4.h>
 #include <SYS/SYS_Math.h>
 
-#include "converters.hpp"
+#include "../converters.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
 
 using namespace SOP_IGL;
+
+void
+newSopOperator(OP_OperatorTable *table)
+{
+    table->addOperator(new OP_Operator(
+        "igldiscretegeo",
+        "EE IGLDiscreteGeometry",
+        SOP_IGLDiscreteGeometry::myConstructor,
+        SOP_IGLDiscreteGeometry::myTemplateList,
+        2,
+        3,
+        0));
+}
+
 
 static PRM_Name names[] = {
     PRM_Name("curvature",          "Add Principal Curvature"),
