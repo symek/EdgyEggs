@@ -1,9 +1,9 @@
 [submodule "external/eigen"]
 	path = external/eigen
 	url = https://github.com/libigl/eigen
-[submodule "external/libigl"]
-	path = external/libigl
-	url = https://github.com/libigl/libigl
 [submodule "external/eltopo"]
 	path = external/eltopo
 	url = https://github.com/tysonbrochu/eltopo
+[submodule "external/libigl"]
+	path = external/libigl
+	url = https://github.com/libigl/libigl.git
