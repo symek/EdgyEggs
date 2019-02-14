@@ -2,7 +2,7 @@
 #include <libShapeOp/src/Solver.h>
 #include <libShapeOp/src/Constraint.h>
 
-
+#include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
 #include <OP/OP_Operator.h>
@@ -20,6 +20,19 @@
 
 using namespace SOP_SHAPEOP;
 
+void
+newSopOperator(OP_OperatorTable *table)
+{
+    table->addOperator(new OP_Operator(
+        "shapeop",
+        "EE ShapeOp",
+        SOP_ShapeOp::myConstructor,
+        SOP_ShapeOp::myTemplateList,
+        2,
+        3,
+        0));   
+
+}
 
 namespace SOP_SHAPEOP {
 
