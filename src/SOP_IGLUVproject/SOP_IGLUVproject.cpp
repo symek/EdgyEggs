@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
 #include <OP/OP_Operator.h>
@@ -16,10 +17,23 @@
 #include <UT/UT_Matrix4.h>
 #include <SYS/SYS_Math.h>
 
-#include "converters.hpp"
+#include "../converters.hpp"
 #include "SOP_IGLUVproject.hpp"
 
 using namespace SOP_IGL;
+
+void
+newSopOperator(OP_OperatorTable *table)
+{
+    table->addOperator(new OP_Operator(
+        "igluvproject",
+        "EE IGLUVProject",
+        SOP_IGLUVproject::myConstructor,
+        SOP_IGLUVproject::myTemplateList,
+        1,
+        1,
+        0));
+}
 
 static PRM_Name names[] = {
     PRM_Name("term",     "UV Projection"),
