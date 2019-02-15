@@ -237,7 +237,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         std::vector<const GU_Detail*> fgr_sources{2};
         fgr_sources[0] = gdp; fgr_sources[1] = target_gdp;
         for (const auto geo: fgr_sources) {
-
+            // these are shared_ptr:
             sop_pcl::Points::Ptr       points (new sop_pcl::Points);
             sop_pcl::Normals::Ptr      normals(new sop_pcl::Normals);
             sop_pcl::FeatureHists::Ptr fpfhs(new sop_pcl::FeatureHists);
@@ -251,7 +251,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
             // both are vectors of eigen Vectors, should be easy to
             // cheat and swap buffers...    
             for (int i=0; i<points->size(); ++i) {
-                const pcl::PointXYZ & point = points->points[i];
+                const pcl::PointXYZ & point        = points->points[i];
                 const pcl::FPFHSignature33 & feat  = fpfhs->points[i];
                 const Eigen::Vector3f epoint(point.x, point.y, point.z);
                 Eigen::VectorXf efeat; efeat.resize(33);
@@ -262,8 +262,8 @@ SOP_PCAlign::cookMySop(OP_Context &context)
                 features[i]  = efeat;
             }
 
-            ifgr.pointcloud_.push_back(positions);
-            ifgr.features_.push_back(features);
+            ifgr.pointcloud_.emplace_back(positions);
+            ifgr.features_.emplace_back(features);
         }
 
 

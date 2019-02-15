@@ -27,8 +27,14 @@ add_library( ${library_name} SHARED
    ${pcalign_sources}
 )
 
+add_dependencies(${library_name} Cpd)
+
+link_directories(${CMAKE_SOURCE_DIR}/external/cpd)
+
 # Link against the Houdini libraries, and add required include directories and compile definitions.
 target_link_libraries( ${library_name} Houdini )
+target_link_libraries( ${library_name} cpd )
+
 if (BUILD_WITH_INTEL_FGR)
 	target_link_libraries( ${library_name} ${PCL_COMMON_LIBRARIES} ${PCL_FEATURES_LIBRARIES})
 endif()

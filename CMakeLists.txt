@@ -26,6 +26,17 @@ if (PCL_FOUND)
 	set(BUILD_WITH_INTEL_FGR TRUE)
 endif()
 
+# Cpd
+include(ExternalProject)
+ExternalProject_Add(Cpd
+  SOURCE_DIR        "${CMAKE_SOURCE_DIR}/external/cpd"
+  BINARY_DIR        "${CMAKE_SOURCE_DIR}/external/cpd/build"
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND     ""
+  INSTALL_COMMAND   ""
+  TEST_COMMAND      ""
+)
+
 # list( APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cpd")
 # find_package(Cpd REQUIRED)
 
@@ -37,4 +48,5 @@ set (edgyeggs_version_patch       0)
 # add_subdirectory (src/SOP_IGLDiscreteGeo)
 # add_subdirectory (src/SOP_IGLUVproject)
 # add_subdirectory (src/SOP_ShapeOp)
+add_subdirectory (${CMAKE_SOURCE_DIR}/external/cpd)
 add_subdirectory (src/SOP_PCAlign)
