@@ -26,6 +26,9 @@ if (PCL_FOUND)
 	set(BUILD_WITH_INTEL_FGR TRUE)
 endif()
 
+# list( APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cpd")
+# find_package(Cpd REQUIRED)
+
 set (edgyeggs_version_major       0)
 set (edgyeggs_version_minor       2)
 set (edgyeggs_version_patch       0)

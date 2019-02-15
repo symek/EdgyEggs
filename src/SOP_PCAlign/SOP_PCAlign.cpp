@@ -233,53 +233,60 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     } 
     #ifdef BUILD_WITH_INTEL_FGR
     else if (method == ALIGN_METHOD::INTEL_FGR) {
-        sop_pcl::Points::Ptr       points (new sop_pcl::Points);
-        sop_pcl::Normals::Ptr      normals(new sop_pcl::Normals);
-        sop_pcl::FeatureHists::Ptr fpfhs(new sop_pcl::FeatureHists);
+        FastGlobalRegistration ifgr; 
+        std::vector<const GU_Detail*> fgr_sources{2};
+        fgr_sources[0] = gdp; fgr_sources[1] = target_gdp;
+        for (const auto geo: fgr_sources) {
 
-        sop_pcl::gdp_to_pcl(gdp, points);
-        sop_pcl::estimate_normals(points, normals);
-        sop_pcl::compute_fpfh(points, normals, fpfhs);
+            sop_pcl::Points::Ptr       points (new sop_pcl::Points);
+            sop_pcl::Normals::Ptr      normals(new sop_pcl::Normals);
+            sop_pcl::FeatureHists::Ptr fpfhs(new sop_pcl::FeatureHists);
 
-        std::vector<Eigen::Vector3f> positions(points->size());
-        std::vector<Eigen::VectorXf> features(fpfhs->size());
-        // both are vectors of eigen Vectors, should be easy to
-        // cheat and swap buffers...    
-        for (int i=0; i<points->size(); ++i) {
-            const pcl::PointXYZ & point = points->points[i];
-            const pcl::FPFHSignature33 & feat  = fpfhs->points[i];
-            const Eigen::Vector3f epoint(point.x, point.y, point.z);
-            Eigen::VectorXf efeat; efeat.resize(33);
-            for (int j=0; j<33; ++j) {
-                efeat(j) = feat.histogram[j];
+            sop_pcl::gdp_to_pcl(geo, points);
+            sop_pcl::estimate_normals(points, normals);
+            sop_pcl::compute_fpfh(points, normals, fpfhs);
+
+            std::vector<Eigen::Vector3f> positions(points->size());
+            std::vector<Eigen::VectorXf> features(fpfhs->size());
+            // both are vectors of eigen Vectors, should be easy to
+            // cheat and swap buffers...    
+            for (int i=0; i<points->size(); ++i) {
+                const pcl::PointXYZ & point = points->points[i];
+                const pcl::FPFHSignature33 & feat  = fpfhs->points[i];
+                const Eigen::Vector3f epoint(point.x, point.y, point.z);
+                Eigen::VectorXf efeat; efeat.resize(33);
+                for (int j=0; j<33; ++j) {
+                    efeat(j) = feat.histogram[j];
+                }
+                positions[i] = epoint;
+                features[i]  = efeat;
             }
-            positions[i] = epoint;
-            features[i]  = efeat;
+
+            ifgr.pointcloud_.push_back(positions);
+            ifgr.features_.push_back(features);
         }
 
-        FastGlobalRegistration ifgr; 
-        ifgr.pointcloud_.push_back(positions);
-        ifgr.features_.push_back(features);
-        // ifgr.NormalizePoints();
-        // ifgr.AdvancedMatching();
-        // ifgr.OptimizePairwise(true, ITERATION_NUMBER); 
-        // Eigen::Matrix4f t = ifgr.GetTrans();
 
-        // const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
-        //                     t(1,0), t(1,1), t(1,2), t(1,3),
-        //                     t(2,0), t(2,1), t(2,2), t(2,3),
-        //                     t(3,0), t(3,1), t(3,2), t(3,3));
+        ifgr.NormalizePoints();
+        ifgr.AdvancedMatching();
+        ifgr.OptimizePairwise(true, ITERATION_NUMBER); 
+        Eigen::Matrix4f t = ifgr.GetTrans();
 
-        // GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "transform", 16));
-        // xform_h.set(GA_Offset(0), m);
+        const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
+                            t(1,0), t(1,1), t(1,2), t(1,3),
+                            t(2,0), t(2,1), t(2,2), t(2,3),
+                            t(3,0), t(3,1), t(3,2), t(3,3));
 
-        // {
-        //     GA_FOR_ALL_PTOFF(gdp, ptoff) {
-        //             UT_Vector3 pos = gdp->getPos3(ptoff);
-        //             pos *= m;
-        //             gdp->setPos3(ptoff, pos);
-        //         }
-        // }
+        GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "transform", 16));
+        xform_h.set(GA_Offset(0), m);
+
+        {
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                UT_Vector3 pos = gdp->getPos3(ptoff);
+                pos *= m;
+                gdp->setPos3(ptoff, pos);
+            }
+        }
 
         // GA_RWHandleV3 norm_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "N", 3));
         // GA_FOR_ALL_PTOFF(gdp, ptoff) {
@@ -290,8 +297,8 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         // }
     
 
-        // gdp->getP()->bumpDataId();
-        // return error();
+        gdp->getP()->bumpDataId();
+        return error();
     }
     #endif
 
