@@ -37,9 +37,6 @@ ExternalProject_Add(Cpd
   TEST_COMMAND      ""
 )
 
-# list( APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cpd")
-# find_package(Cpd REQUIRED)
-
 set (edgyeggs_version_major       0)
 set (edgyeggs_version_minor       2)
 set (edgyeggs_version_patch       0)

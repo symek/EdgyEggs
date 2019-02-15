@@ -3,12 +3,15 @@
 
 namespace pcalign {
 
+typedef double Scalar;
+typedef Eigen::Matrix<Scalar, 3, Eigen::Dynamic> Vertices;
 
 enum ALIGN_METHOD {
     RIGID,
     SPARSE_ICP,
     REWEIGHTED_ICP,
     INTEL_FGR,
+    CPD,
 };
 
  enum WEIGHT_FUNC {
@@ -19,6 +22,23 @@ enum ALIGN_METHOD {
         TRIMMED,
         NONE,
     };
+
+
+bool copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix ) 
+{
+    matrix.resize(Eigen::NoChange, gdp->getNumPoints());
+
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(gdp, ptoff)
+    {
+        const UT_Vector3 pos = gdp->getPos3(ptoff);
+        const GA_Index   idx = gdp->pointIndex(ptoff);
+        matrix(0, idx) = pos.x();
+        matrix(1, idx) = pos.y();
+        matrix(2, idx) = pos.z();
+    }
+    return true;
+}
 
 class SOP_PCAlign : public SOP_Node
 {
@@ -34,17 +54,17 @@ protected:
     virtual OP_ERROR         cookMySop(OP_Context &context) override;
 private:
 
-    int     METHOD()              { return evalInt("method", 0, 0); }
-    int     USE_PENALTY(fpreal t) { return evalInt("usepenalty", 0, t); }
-    fpreal  P_NORM(fpreal t)      { return evalFloat("pnorm", 0, t); }
-    fpreal  MU(fpreal t)          { return evalFloat("mu", 0, t); }
-    fpreal  ALPHA(fpreal t)       { return evalFloat("alpha", 0, t); }
-    fpreal  MAX_MU(fpreal t)      { return evalFloat("maxmu", 0, t); }
-    int     MAX_ICP(fpreal t)     { return evalInt("maxicp", 0, t); }
-    int     MAX_OUTER(fpreal t)   { return evalInt("maxouter", 0, t); }
-    int     MAX_INNER(fpreal t)   { return evalInt("maxinner", 0, t); }
-    fpreal  STOP(fpreal t)       { return evalFloat("stop", 0, t); }
-    int     WEIGHTFUNC(fpreal t) { return evalInt("weightfunc", 0, t); }
+    int     ALIGNMETHOD()         { return evalInt("alignmethod", 0, 0); }
+    int     MAXITER(fpreal t)     { return evalInt("maxiterations", 0, t); }
+    int     MAXOUTERITER(fpreal t)   { return evalInt("maxouteriter", 0, t); }
+    int     MAXINNERITER(fpreal t)   { return evalInt("maxinneriter", 0, t); }
+    fpreal  STOPCRITERIA(fpreal t)   { return evalFloat("stopcritera", 0, t); }
+    int     USEPENALTY(fpreal t)     { return evalInt("usepenalty", 0, t); }
+    fpreal  PNORM(fpreal t)         { return evalFloat("pnorm", 0, t); }
+    fpreal  PENALTYWEIGHT(fpreal t) { return evalFloat("penaltyweight", 0, t); }
+    fpreal  PENALTYFACTOR(fpreal t) { return evalFloat("penaltyfactor", 0, t); }
+    fpreal  MAXPENALTY(fpreal t)    { return evalFloat("maxpenalty", 0, t); }
+    int     WEIGHTFUNC(fpreal t)    { return evalInt("reweightfunc", 0, t); }
 
 };
 

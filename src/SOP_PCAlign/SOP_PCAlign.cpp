@@ -15,21 +15,19 @@
 
 #include "SOP_PCAlign.hpp"
 
-
 #include <unordered_map>
 #include <memory>
 
 
 using namespace pcalign;
-typedef double Scalar;
-typedef Eigen::Matrix<Scalar, 3, Eigen::Dynamic> Vertices;
+
 
 void
 newSopOperator(OP_OperatorTable *table)
 {
     table->addOperator(new OP_Operator(
         "pcalign",
-        "EE PointCloudAlign",
+        "EE Point Cloud Align",
         SOP_PCAlign::myConstructor,
         SOP_PCAlign::myTemplateList,
         2,
@@ -38,17 +36,17 @@ newSopOperator(OP_OperatorTable *table)
 }
 
 static PRM_Name names[] = {
-    PRM_Name("usepenalty",   "Use penalty"),
-    PRM_Name("p",            "P norm"),
-    PRM_Name("mu",           "Penelty weight"),
-    PRM_Name("alpha",        "Penalty factor"),
-    PRM_Name("maxmu",        "Max penalty"),
-    PRM_Name("maxicp",       "Max ICP iteration"),
-    PRM_Name("maxouter",     "Max outer iteration"),
-    PRM_Name("maxinner",     "Max inner iteration"),
-    PRM_Name("stop",         "Stopping criteria"),
-    PRM_Name("method",       "Method"),
-    PRM_Name("weightfunc",   "Reweight function"),
+    PRM_Name("alignmethod",   "Align Method"),
+    PRM_Name("maxiterations", "Max iterations"),
+    PRM_Name("maxouteriter",  "Max outer iteration"),
+    PRM_Name("maxinneriter",  "Max inner iteration"),
+    PRM_Name("stopcritera",   "Stopping criteria"),
+    PRM_Name("usepenalty",    "Use penalty"),
+    PRM_Name("pnorm",         "P norm"),
+    PRM_Name("penaltyweight", "Penelty weight"),
+    PRM_Name("penaltyfactor", "Penalty factor"),
+    PRM_Name("maxpenalty",    "Max penalty"),
+    PRM_Name("reweightfunc",  "Reweight function"),
 };
 
 static PRM_Name  modelChoices[] =
@@ -57,6 +55,7 @@ static PRM_Name  modelChoices[] =
     PRM_Name("1", "Sparse ICP"),
     PRM_Name("2", "Reweighted ICP"),
     PRM_Name("3", "Intel FGR"),
+    PRM_Name("4", "Coherent Point Drift"),
     PRM_Name(0)
 };
 
@@ -74,25 +73,25 @@ static PRM_Name weightFuncChoices[] =
 static PRM_ChoiceList  methodMenu(PRM_CHOICELIST_SINGLE, modelChoices);
 static PRM_ChoiceList  weightMenu(PRM_CHOICELIST_SINGLE, weightFuncChoices);
 
+static PRM_Default maxIterDefault(10);
 static PRM_Default alphaDefault(1.2);
 static PRM_Default maxmuDefault(1e5);
-static PRM_Default maxicpDefault(10);
 static PRM_Default stopDefault(1e-5);
 
 
 PRM_Template
 SOP_PCAlign::myTemplateList[] = {
-    PRM_Template(PRM_ORD,   1, &names[9], 0, &methodMenu),
-    PRM_Template(PRM_TOGGLE,1, &names[0], PRMzeroDefaults),
-    PRM_Template(PRM_FLT_J, 1, &names[1], PRMoneDefaults),
-    PRM_Template(PRM_FLT_J, 1, &names[2], PRMtenDefaults),
-    PRM_Template(PRM_FLT_J, 1, &names[3], &alphaDefault),
-    PRM_Template(PRM_FLT_J, 1, &names[4], &maxmuDefault),
-    PRM_Template(PRM_INT_J, 1, &names[5], &maxicpDefault),
-    PRM_Template(PRM_INT_J, 1, &names[6], &maxicpDefault),
-    PRM_Template(PRM_INT_J, 1, &names[7], PRMoneDefaults),
-    PRM_Template(PRM_FLT_LOG, 1, &names[8],     &stopDefault),
-    PRM_Template(PRM_ORD,     1, &names[10], PRMfiveDefaults, &weightMenu),
+    PRM_Template(PRM_ORD,   1, &names[0], 0, &methodMenu), // align method
+    PRM_Template(PRM_INT_J, 1, &names[1], &maxIterDefault), // max iterations (rigid, sparse, reweighted sparse)
+    PRM_Template(PRM_INT_J, 1, &names[2], &maxIterDefault), // max outer iterations
+    PRM_Template(PRM_INT_J, 1, &names[3], PRMoneDefaults),  // max inner iterations
+    PRM_Template(PRM_FLT_LOG, 1, &names[4], &stopDefault),    // stop criteria
+    PRM_Template(PRM_TOGGLE,1, &names[5], PRMzeroDefaults), // use penalty
+    PRM_Template(PRM_FLT_J, 1, &names[6], PRMoneDefaults), // P norm 
+    PRM_Template(PRM_FLT_J, 1, &names[7], PRMtenDefaults), // penalty weight (mu)
+    PRM_Template(PRM_FLT_J, 1, &names[8], &alphaDefault), // penalty factor (alpha)
+    PRM_Template(PRM_FLT_J, 1, &names[9], &maxmuDefault), // max penalty weight (max mu)
+    PRM_Template(PRM_ORD,   1, &names[10], PRMfiveDefaults, &weightMenu),
     PRM_Template(),
 };
 
@@ -100,10 +99,43 @@ bool
 SOP_PCAlign::updateParmsFlags()
 {
     bool    changed = SOP_Node::updateParmsFlags();
-    bool    method   = evalInt("method", 0, 0);
-    // if (method == ALIGN_METHOD::RIGID){
-        // changed |= enableParm("maxicp", 0);
-    // }
+    const bool method    = evalInt("alignmethod", 0, 0);
+    const int usepenalty = evalInt("usepenalty", 0, 0);
+
+    if (method == ALIGN_METHOD::RIGID) {
+        setVisibleState("maxiterations", false);
+        setVisibleState("maxouteriter", false);
+        setVisibleState("maxinneriter", false);
+        setVisibleState("stopcritera", false);
+        setVisibleState("usepenalty", false);
+        setVisibleState("pnorm", false);
+        setVisibleState("penaltyweight", false);
+        setVisibleState("penaltyfactor", false);
+        setVisibleState("maxpenalty", false);
+        setVisibleState("reweightfunc", false);
+    }
+    else if (method == ALIGN_METHOD::SPARSE_ICP) {
+        setVisibleState("maxiterations", true);
+        setVisibleState("maxouteriter", true);
+        setVisibleState("maxinneriter", true);
+        setVisibleState("stopcritera", true);
+        setVisibleState("usepenalty", true);
+        if (usepenalty == 1) {
+            setVisibleState("pnorm", true);
+            setVisibleState("penaltyweight", true);
+            setVisibleState("penaltyfactor", true);
+            setVisibleState("maxpenalty", true);
+            setVisibleState("reweightfunc", true);
+        } else {
+            setVisibleState("pnorm", false);
+            setVisibleState("penaltyweight", false);
+            setVisibleState("penaltyfactor", false);
+            setVisibleState("maxpenalty", false);
+            setVisibleState("reweightfunc", false);
+            
+
+        }
+    }
 
     // changed |= enableParm("copcolor", use_path);
     return changed;
@@ -143,52 +175,40 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         return error();
     }
 
-    const int   method  = METHOD();
-    const int   penalty = USE_PENALTY(t);
-    const float p_norm  = P_NORM(t);   
-    const float mu      = MU(t);         
-    const float alpha   = ALPHA(t);         
-    const float max_mu  = MAX_MU(t);         
-    const int   max_icp = MAX_ICP(t);       
-    const int   max_o   = MAX_OUTER(t);   
-    const int   max_i   = MAX_INNER(t);   
-    const float stop    = STOP(t);  
-    const int   weightfunc = WEIGHTFUNC(t);    
+    const int   align_method    = ALIGNMETHOD();
+    const int   use_penalty     = USEPENALTY(t);
+    const float p_norm          = PNORM(t);   
+    const float penalty_weight  = PENALTYWEIGHT(t);         
+    const float penalty_factor  = PENALTYFACTOR(t);         
+    const float max_penalty     = MAXPENALTY(t);         
+    const int   max_iterations  = MAXITER(t);       
+    const int   max_outer_iter  = MAXOUTERITER(t);   
+    const int   max_inner_iter  = MAXINNERITER(t);   
+    const float stop_critera    = STOPCRITERIA(t);  
+    const int   weight_func     = WEIGHTFUNC(t);    
    
     Vertices target, source;
-    source.resize(Eigen::NoChange, gdp->getNumPoints());
-    target.resize(Eigen::NoChange, target_gdp->getNumPoints());
+    copy_position_to_eigen(gdp, source);
+    copy_position_to_eigen(target_gdp, target);
 
-    GA_Offset ptoff;
-    GA_FOR_ALL_PTOFF(gdp, ptoff){
-        const UT_Vector3 pos = gdp->getPos3(ptoff);
-        const GA_Index   idx = gdp->pointIndex(ptoff);
-        target(0, idx) = pos.x();
-        target(1, idx) = pos.y();
-        target(2, idx) = pos.z();
-    }
 
+    if (align_method == ALIGN_METHOD::RIGID) 
     {
-        GA_FOR_ALL_PTOFF(target_gdp, ptoff){
-            const UT_Vector3 pos = target_gdp->getPos3(ptoff);
-            const GA_Index   idx = target_gdp->pointIndex(ptoff);
-            source(0, idx) = pos.x();
-            source(1, idx) = pos.y();
-            source(2, idx) = pos.z();
-        }
-    }
-
-    if (method == ALIGN_METHOD::RIGID) {
-        Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
+        /// TODO: add confidence weights via point attribute.
+        const Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
         const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
                             t(1,0), t(1,1), t(1,2), t(1,3),
                             t(2,0), t(2,1), t(2,2), t(2,3),
                             t(3,0), t(3,1), t(3,2), t(3,3));
 
-        GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "transform", 16));
-        xform_h.set(GA_Offset(0), m);
+        GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "rigid_xform", 16));
+        if(xform_h.isValid()) {
+            xform_h.set(GA_Offset(0), m);
+        }
 
-        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) 
+        {
             UT_Vector3 pos = gdp->getPos3(ptoff);
             pos *= m;
             gdp->setPos3(ptoff, pos);
@@ -197,40 +217,58 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         gdp->getP()->bumpDataId();
         return error();
 
-    } else if (method == ALIGN_METHOD::SPARSE_ICP) {
+    }
+    else if (align_method == ALIGN_METHOD::SPARSE_ICP) 
+    {
         SICP::Parameters parms;
-        parms.use_penalty = static_cast<bool>(penalty);
+        parms.use_penalty = static_cast<bool>(use_penalty);
         parms.p = p_norm;
-        parms.mu = mu;
-        parms.alpha = alpha;
-        parms.max_mu = max_mu;
-        parms.max_icp = max_icp;
-        parms.max_outer = max_o;
-        parms.max_inner = max_i;
-        parms.stop = stop;
-        SICP::point_to_point(source, target, parms);
-        GA_FOR_ALL_PTOFF(gdp, ptoff){
-            const GA_Index i = gdp->pointIndex(ptoff);
-            const UT_Vector3 pos(source(0, i), source(1, i), source(2, i));
-            gdp->setPos3(ptoff, pos);
-        }
+        parms.mu = penalty_weight;
+        parms.alpha = penalty_factor;
+        parms.max_mu = max_penalty;
+        parms.max_icp = max_iterations;
+        parms.max_outer = max_outer_iter;
+        parms.max_inner = max_inner_iter;
+        parms.stop = stop_critera;
 
-    } else if (method == ALIGN_METHOD::REWEIGHTED_ICP) {
-        ICP::Parameters parms;
-        // this crashes... atm
-        // parms.f = static_cast<ICP::Function>(weightfunc);
-        parms.p = p_norm;
-        parms.max_icp = max_icp;
-        parms.max_outer = max_o;
-        parms.stop = stop;
-        ICP::point_to_point(source, target, parms);
-        GA_FOR_ALL_PTOFF(gdp, ptoff){
+        SICP::point_to_point(source, target, parms);
+
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        {   
             const GA_Index i = gdp->pointIndex(ptoff);
             const UT_Vector3 pos(source(0, i), source(1, i), source(2, i));
             gdp->setPos3(ptoff, pos);
         }
 
     } 
+    else if (align_method == ALIGN_METHOD::REWEIGHTED_ICP) 
+    {
+        ICP::Parameters parms;
+        // this crashes... atm
+        parms.f = static_cast<ICP::Function>(weight_func);
+        parms.p = p_norm;
+        parms.max_icp = max_iterations;
+        parms.max_outer = max_outer_iter;
+        parms.stop = stop_critera;
+
+        ICP::point_to_point(source, target, parms);
+
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        {
+            const GA_Index i = gdp->pointIndex(ptoff);
+            const UT_Vector3 pos(source(0, i), source(1, i), source(2, i));
+            gdp->setPos3(ptoff, pos);
+        }
+
+    } 
+    #if 0 
+    else if (alignmethod == ALIGN_METHOD::CPD) {
+
+    }
+    // Intel FGR relies on PCL, which is to big to add as submodule
+    // so we need this switch in case PCL was not found
     #ifdef BUILD_WITH_INTEL_FGR
     else if (method == ALIGN_METHOD::INTEL_FGR) {
         FastGlobalRegistration ifgr; 
@@ -265,8 +303,6 @@ SOP_PCAlign::cookMySop(OP_Context &context)
             ifgr.pointcloud_.emplace_back(positions);
             ifgr.features_.emplace_back(features);
         }
-
-
         ifgr.NormalizePoints();
         ifgr.AdvancedMatching();
         ifgr.OptimizePairwise(true, ITERATION_NUMBER); 
@@ -300,6 +336,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         gdp->getP()->bumpDataId();
         return error();
     }
+    #endif
     #endif
 
 
