@@ -10,3 +10,6 @@
 [submodule "external/sparseicp"]
 	path = external/sparseicp
 	url = https://github.com/OpenGP/sparseicp
+[submodule "external/cpd"]
+	path = external/cpd
+	url = https://github.com/gadomski/cpd.git
