@@ -1,5 +1,5 @@
 # Edgy Eggs 
-Edgy Eggs is a collection of Houdini's operators providing an early access to some of the popular open source libraries for geometry processing [1],[2],[3],[4]. It is meant to be a bunch of experimental nodes, not polished enough and crash free to become self contained project. The idea is so that a single github account collects many publicaly available algorthms, so that iterested audence can compare them or use in case of desparate need before they become available in Houdini offically.
+Edgy Eggs is a collection of Houdini's operators providing an early access to some of the popular open source libraries for geometry processing [1],[2],[3],[4],[5],[6]. It is meant to be a bunch of experimental nodes, not polished enough and crash free to become self contained project. The idea is so that a single github account collects many publicaly available algorthms, so that iterested audence can compare them or use in case of desparate need before they become available in Houdini offically.
 
 Some of available SOPs:
 ### (libigl based)
@@ -53,7 +53,7 @@ Some of available SOPs:
 
 ### Sparse Iterative Closest Point (SparseICP)
 
-[6] C++ implementation for the paper: 
+[6]: C++ implementation for the paper: 
 
     "Sparse Iterative Closest Point"
     Sofien Bouaziz, Andrea Tagliasacchi, Mark Pauly
