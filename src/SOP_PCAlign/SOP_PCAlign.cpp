@@ -7,6 +7,7 @@
 #include <SYS/SYS_Math.h>
 
 #include <ICP.h>
+#include <cpd/rigid.hpp>
 
 #ifdef BUILD_WITH_INTEL_FGR
 #include "pcl_fpfh.hpp"
@@ -98,46 +99,45 @@ SOP_PCAlign::myTemplateList[] = {
 bool
 SOP_PCAlign::updateParmsFlags()
 {
-    bool    changed = SOP_Node::updateParmsFlags();
+    bool changed         = SOP_Node::updateParmsFlags();
+    #if 0
     const bool method    = evalInt("alignmethod", 0, 0);
     const int usepenalty = evalInt("usepenalty", 0, 0);
 
-    if (method == ALIGN_METHOD::RIGID) {
-        setVisibleState("maxiterations", false);
-        setVisibleState("maxouteriter", false);
-        setVisibleState("maxinneriter", false);
-        setVisibleState("stopcritera", false);
-        setVisibleState("usepenalty", false);
-        setVisibleState("pnorm", false);
-        setVisibleState("penaltyweight", false);
-        setVisibleState("penaltyfactor", false);
-        setVisibleState("maxpenalty", false);
-        setVisibleState("reweightfunc", false);
-    }
-    else if (method == ALIGN_METHOD::SPARSE_ICP) {
-        setVisibleState("maxiterations", true);
-        setVisibleState("maxouteriter", true);
-        setVisibleState("maxinneriter", true);
-        setVisibleState("stopcritera", true);
-        setVisibleState("usepenalty", true);
-        if (usepenalty == 1) {
-            setVisibleState("pnorm", true);
-            setVisibleState("penaltyweight", true);
-            setVisibleState("penaltyfactor", true);
-            setVisibleState("maxpenalty", true);
-            setVisibleState("reweightfunc", true);
-        } else {
-            setVisibleState("pnorm", false);
-            setVisibleState("penaltyweight", false);
-            setVisibleState("penaltyfactor", false);
-            setVisibleState("maxpenalty", false);
-            setVisibleState("reweightfunc", false);
-            
+    const std::vector<std::string> sicp_parms{"maxiterations", "maxouteriter", 
+        "maxinneriter", "stopcritera", "usepenalty"};
+    const std::vector<std::string> penalty_parms{"pnorm", "penaltyweight", 
+        "penaltyfactor", "maxpenalty"};
 
-        }
+    const std::vector<std::string> reweighted_parms{"maxiterations", "maxouteriter", 
+       "pnorm", "maxouteriter", "reweightfunc", "stopcritera"};
+
+    if (method == ALIGN_METHOD::RIGID) {
+        for(const auto & parm: sicp_parms) 
+            setVisibleState(parm.c_str(), false);
+        for(const auto & parm: penalty_parms) 
+            setVisibleState(parm.c_str(), false);
+        
+    } 
+    else if (method == ALIGN_METHOD::SPARSE_ICP) 
+    {
+       for(const auto & parm: sicp_parms) 
+            setVisibleState(parm.c_str(), true);
+
+        if (usepenalty == 1) 
+           for(const auto & parm: penalty_parms) 
+                setVisibleState(parm.c_str(), true);
+        else 
+             for(const auto & parm: penalty_parms) 
+                setVisibleState(parm.c_str(), false);
+    } else if (method == ALIGN_METHOD::REWEIGHTED_ICP)
+    {
+        for(const auto & parm: reweighted_parms) 
+                setVisibleState(parm.c_str(), true);
     }
 
     // changed |= enableParm("copcolor", use_path);
+    #endif
     return changed;
 }
 
@@ -195,7 +195,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     if (align_method == ALIGN_METHOD::RIGID) 
     {
         /// TODO: add confidence weights via point attribute.
-        const Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
+        Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
         const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
                             t(1,0), t(1,1), t(1,2), t(1,3),
                             t(2,0), t(2,1), t(2,2), t(2,3),
@@ -263,18 +263,39 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         }
 
     } 
-    #if 0 
-    else if (alignmethod == ALIGN_METHOD::CPD) {
+    #if 1
+    else if (align_method == ALIGN_METHOD::CPD) 
+    {
+        Eigen::MatrixXd source;
+        Eigen::MatrixXd target;
+        copy_position_to_eigen_rows(gdp, source);
+        copy_position_to_eigen_rows(target_gdp, target);
+        // cpd::Matrix fixed = cpd::matrix_from_path(argv[1]);
+        // cpd::Matrix moving = cpd::matrix_from_path(argv[2]);
+        // Eigen::MatrixXd sourceT = source.transpose(); 
+        // Eigen::MatrixXd targetT = target.transpose();
+        cpd::Rigid rigid;
+        rigid.scale(true);
+        cpd::RigidResult result = rigid.run(source, target);
+        // GA_Offset ptoff;
+        // GA_FOR_ALL_PTOFF(gdp, ptoff)
+        // {
+        //     const GA_Index i = gdp->pointIndex(ptoff);
+        //     const UT_Vector3 pos(result.points(0, i), result.points(1, i), result.points(2, i));
+        //     gdp->setPos3(ptoff, pos);
+        // }
+        
 
     }
     // Intel FGR relies on PCL, which is to big to add as submodule
     // so we need this switch in case PCL was not found
     #ifdef BUILD_WITH_INTEL_FGR
-    else if (method == ALIGN_METHOD::INTEL_FGR) {
+    else if (align_method == ALIGN_METHOD::INTEL_FGR) {
         FastGlobalRegistration ifgr; 
         std::vector<const GU_Detail*> fgr_sources{2};
         fgr_sources[0] = gdp; fgr_sources[1] = target_gdp;
-        for (const auto geo: fgr_sources) {
+        for (const auto geo: fgr_sources) 
+        {
             // these are shared_ptr:
             sop_pcl::Points::Ptr       points (new sop_pcl::Points);
             sop_pcl::Normals::Ptr      normals(new sop_pcl::Normals);
@@ -317,6 +338,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         xform_h.set(GA_Offset(0), m);
 
         {
+            GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 UT_Vector3 pos = gdp->getPos3(ptoff);
                 pos *= m;

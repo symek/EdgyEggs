@@ -40,6 +40,22 @@ bool copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix )
     return true;
 }
 
+bool copy_position_to_eigen_rows(const GU_Detail * gdp, Eigen::MatrixXd & matrix ) 
+{
+    matrix.resize(gdp->getNumPoints(), 3);
+
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(gdp, ptoff)
+    {
+        const UT_Vector3 pos = gdp->getPos3(ptoff);
+        const GA_Index   idx = gdp->pointIndex(ptoff);
+        matrix(idx, 0) = pos.x();
+        matrix(idx, 1) = pos.y();
+        matrix(idx, 2) = pos.z();
+    }
+    return true;
+}
+
 class SOP_PCAlign : public SOP_Node
 {
 public:
