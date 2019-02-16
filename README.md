@@ -1,5 +1,18 @@
 # Edgy Eggs 
-Edgy Eggs is a collection of Houdini's operators which leverage some of popular geometry libraries developed during research conducted by some very smart people[1],[2],[3]. Under construction, not really useful.
+Edgy Eggs is a collection of Houdini's operators providing an early access to some of the popular open source libraries for geometry processing [1],[2],[3]. It is meant to be a bunch of experimental nodes, not polished enough and crash free to become self contained project. The idea is so that a single github account collects many publicaly available algorthms, so that iterested audence can compare them or use in case of desparate need before they become available in Houdini offically.
+
+## Currently available SOPs:
+### (libigl based)
+#### IGLDeform - harmonic and As Rigid As Possible mesh deformation
+#### IGLDiscriteGeometry - compute curvature, laplacian (smooth and sharpen), gradient, eigenvectors on mesh
+#### IGLUVProject - ARAP and LSCM UV projections
+### (ShapeOp based)
+#### ShapeOp - optimization og mesh shape under constraints
+### (various libraries)
+#### Point Cloud Align - implemenetation of SparseICP / Intel Fast Global Registration / Coherent Point Drift for point cloud aligment.
+
+
+
 
 ## libigl - A simple C++ geometry processing library
 [1]: http://libigl.github.io/libigl
@@ -35,3 +48,5 @@ Edgy Eggs is a collection of Houdini's operators which leverage some of popular 
 		url = {http://link.aip.org/link/?SCE/31/2472/1},
 		doi = {10.1137/080737617}
 		}
+## https://github.com/gadomski/cpd
+[4]: Myronenko A., Song X. (2010): "Point-Set Registration: Coherent Point Drift", IEEE Trans. on Pattern Analysis and Machine Intelligence, vol. 32, issue 12, pp. 2262-2275, 
