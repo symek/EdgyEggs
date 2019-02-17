@@ -7,7 +7,13 @@
 #include <SYS/SYS_Math.h>
 
 #include <ICP.h>
+// TODO: move it to Cmake
+#define BUILD_WITH_CPD 1
+#ifdef BUILD_WITH_CPD
 #include <cpd/rigid.hpp>
+#include <cpd/nonrigid.hpp>
+#endif
+
 
 #ifdef BUILD_WITH_INTEL_FGR
 #include "pcl_fpfh.hpp"
@@ -48,6 +54,10 @@ static PRM_Name names[] = {
     PRM_Name("penaltyfactor", "Penalty factor"),
     PRM_Name("maxpenalty",    "Max penalty"),
     PRM_Name("reweightfunc",  "Reweight function"),
+    PRM_Name("doscaling",     "Allow Scaling"),
+    PRM_Name("doreflections", "Allow reflections"),
+    PRM_Name("docorrespondance", "Compute correspondence"),
+    PRM_Name("outliers",         "Outliers factor"),
 };
 
 static PRM_Name  modelChoices[] =
@@ -56,7 +66,8 @@ static PRM_Name  modelChoices[] =
     PRM_Name("1", "Sparse ICP"),
     PRM_Name("2", "Reweighted ICP"),
     PRM_Name("3", "Intel FGR"),
-    PRM_Name("4", "Coherent Point Drift"),
+    PRM_Name("4", "Coherent Point Drift Rigid"),
+    PRM_Name("5", "Coherent Point Drift Non Rigid"),
     PRM_Name(0)
 };
 
@@ -78,6 +89,7 @@ static PRM_Default maxIterDefault(10);
 static PRM_Default alphaDefault(1.2);
 static PRM_Default maxmuDefault(1e5);
 static PRM_Default stopDefault(1e-5);
+static PRM_Default outliersDefault(0.1);
 
 
 PRM_Template
@@ -92,7 +104,11 @@ SOP_PCAlign::myTemplateList[] = {
     PRM_Template(PRM_FLT_J, 1, &names[7], PRMtenDefaults), // penalty weight (mu)
     PRM_Template(PRM_FLT_J, 1, &names[8], &alphaDefault), // penalty factor (alpha)
     PRM_Template(PRM_FLT_J, 1, &names[9], &maxmuDefault), // max penalty weight (max mu)
-    PRM_Template(PRM_ORD,   1, &names[10], PRMfiveDefaults, &weightMenu),
+    PRM_Template(PRM_ORD,   1, &names[10], PRMfiveDefaults, &weightMenu), // weight function
+    PRM_Template(PRM_TOGGLE,1, &names[11], PRMoneDefaults), // allow scaling rigid CPD
+    PRM_Template(PRM_TOGGLE,1, &names[12], PRMzeroDefaults), // allow reflections rigid CPD
+    PRM_Template(PRM_TOGGLE,1, &names[13], PRMzeroDefaults), // compute correspondance rigid CPD
+    PRM_Template(PRM_FLT_LOG, 1,&names[14], &outliersDefault),    // outliers CPD
     PRM_Template(),
 };
 
@@ -141,6 +157,21 @@ SOP_PCAlign::updateParmsFlags()
     return changed;
 }
 
+void SOP_PCAlign::add_detail_array(const Eigen::MatrixXd & matrix, const char* attr_name)
+{
+    assert(matrix.rows()*matrix.cols() == 16);
+    GA_Attribute * xform_detail_attrib = gdp->addFloatArray(GA_ATTRIB_DETAIL, attr_name , 1);
+    const GA_AIFNumericArray * w_aif = xform_detail_attrib->getAIFNumericArray();
+    UT_FprealArray array;
+    array.setSize(matrix.rows()*matrix.cols());
+    for(int i=0; i< matrix.rows(); ++i)
+        for(int j=0; j<matrix.cols(); ++j)
+            array(i*matrix.rows()+j) = matrix(i,j); 
+    
+    w_aif->set(xform_detail_attrib, 0, array);
+    xform_detail_attrib->bumpDataId();
+}
+
 OP_Node *
 SOP_PCAlign::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
 {
@@ -186,11 +217,14 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     const int   max_inner_iter  = MAXINNERITER(t);   
     const float stop_critera    = STOPCRITERIA(t);  
     const int   weight_func     = WEIGHTFUNC(t);    
+    const int   allow_scaling     = DOSCALING(t);    
+    const int   allow_reflections = DOREFLECTIONS(t);    
+    const int   allow_correspondance = evalInt("docorrespondance", 0, t);    
+    const float outliers             = evalFloat("outliers", 0, t);
    
-    Vertices target, source;
+    Vertices source, target;
     copy_position_to_eigen(gdp, source);
     copy_position_to_eigen(target_gdp, target);
-
 
     if (align_method == ALIGN_METHOD::RIGID) 
     {
@@ -201,10 +235,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
                             t(2,0), t(2,1), t(2,2), t(2,3),
                             t(3,0), t(3,1), t(3,2), t(3,3));
 
-        GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "rigid_xform", 16));
-        if(xform_h.isValid()) {
-            xform_h.set(GA_Offset(0), m);
-        }
+        add_detail_array(t.matrix());
 
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff) 
@@ -263,30 +294,58 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         }
 
     } 
-    #if 1
-    else if (align_method == ALIGN_METHOD::CPD) 
+    #if BUILD_WITH_CPD
+    else if (align_method == ALIGN_METHOD::RIGID_CPD) 
     {
-        Eigen::MatrixXd source;
-        Eigen::MatrixXd target;
-        copy_position_to_eigen_rows(gdp, source);
-        copy_position_to_eigen_rows(target_gdp, target);
-        // cpd::Matrix fixed = cpd::matrix_from_path(argv[1]);
-        // cpd::Matrix moving = cpd::matrix_from_path(argv[2]);
-        // Eigen::MatrixXd sourceT = source.transpose(); 
-        // Eigen::MatrixXd targetT = target.transpose();
-        cpd::Rigid rigid;
-        rigid.scale(true);
-        cpd::RigidResult result = rigid.run(source, target);
-        // GA_Offset ptoff;
-        // GA_FOR_ALL_PTOFF(gdp, ptoff)
-        // {
-        //     const GA_Index i = gdp->pointIndex(ptoff);
-        //     const UT_Vector3 pos(result.points(0, i), result.points(1, i), result.points(2, i));
-        //     gdp->setPos3(ptoff, pos);
-        // }
-        
+        Eigen::MatrixXd sourcet = source.transpose();
+        Eigen::MatrixXd targett = target.transpose();
 
+        cpd::Rigid rigid;
+
+        rigid.scale(static_cast<bool>(allow_scaling));
+        rigid.reflections(static_cast<bool>(allow_reflections));
+        rigid.correspondence(static_cast<bool>(allow_correspondance));
+        rigid.outliers(outliers);
+        rigid.max_iterations(SYSmin(max_iterations,1));
+        rigid.tolerance(stop_critera);
+
+        cpd::RigidResult result = rigid.run(sourcet, targett);
+
+        add_detail_array(result.matrix());
+
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        {
+            const GA_Index i = gdp->pointIndex(ptoff);
+            const UT_Vector3 pos(result.points(i, 0), result.points(i, 1), result.points(i, 2));
+            gdp->setPos3(ptoff, pos);
+        }
     }
+    else if (align_method == ALIGN_METHOD::NONRIGID_CPD) 
+    {
+
+        Eigen::MatrixXd sourcet = source.transpose();
+        Eigen::MatrixXd targett = target.transpose();
+
+        cpd::Nonrigid nonrigid;
+
+        nonrigid.correspondence(static_cast<bool>(allow_correspondance));
+        nonrigid.outliers(outliers);
+        nonrigid.max_iterations(SYSmin(max_iterations,1));
+        nonrigid.tolerance(stop_critera);
+
+        cpd::NonrigidResult result = nonrigid.run(sourcet, targett);
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff)
+        {
+            const GA_Index i = gdp->pointIndex(ptoff);
+            const UT_Vector3 pos(result.points(i, 0), result.points(i, 1), result.points(i, 2));
+            gdp->setPos3(ptoff, pos);
+        }
+    }
+
+    #endif
+
     // Intel FGR relies on PCL, which is to big to add as submodule
     // so we need this switch in case PCL was not found
     #ifdef BUILD_WITH_INTEL_FGR
@@ -358,7 +417,6 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         gdp->getP()->bumpDataId();
         return error();
     }
-    #endif
     #endif
 
 

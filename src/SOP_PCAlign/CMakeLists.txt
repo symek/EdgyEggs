@@ -6,7 +6,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cpd/include)
 
 # Add a library with two source files.
 set( library_name SOP_PCAlign )
-
+# add_definitions(-DEIGEN_MALLOC_ALREADY_ALIGNED)
 # Main sources
 list(APPEND pcalign_sources
     SOP_PCAlign.cpp
@@ -31,12 +31,12 @@ add_library( ${library_name} SHARED
 add_dependencies(${library_name} Cpd)
 
 link_directories(${CMAKE_BINARY_DIR}/external/cpd)
-# message(WARNING ${CMAKE_BINARY_DIR}/external/cpd)
 
 # Link against the Houdini libraries, and add required include directories and compile definitions.
 target_link_libraries( ${library_name} Houdini )
 #FIXME
 target_link_libraries( ${library_name} ${CMAKE_BINARY_DIR}/external/cpd/libcpd.dylib )
+# target_link_libraries( ${library_name} ${CMAKE_SOURCE_DIR}/external/cpd/build/libcpd.dylib )
 
 if (BUILD_WITH_INTEL_FGR)
 	target_link_libraries( ${library_name} ${PCL_COMMON_LIBRARIES} ${PCL_FEATURES_LIBRARIES})

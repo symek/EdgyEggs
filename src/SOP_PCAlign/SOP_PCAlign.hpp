@@ -11,7 +11,8 @@ enum ALIGN_METHOD {
     SPARSE_ICP,
     REWEIGHTED_ICP,
     INTEL_FGR,
-    CPD,
+    RIGID_CPD,
+    NONRIGID_CPD,
 };
 
  enum WEIGHT_FUNC {
@@ -24,8 +25,9 @@ enum ALIGN_METHOD {
     };
 
 
-bool copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix ) 
+void copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix) 
 {
+    // Vertices matrix;
     matrix.resize(Eigen::NoChange, gdp->getNumPoints());
 
     GA_Offset ptoff;
@@ -33,15 +35,16 @@ bool copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix )
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
         const GA_Index   idx = gdp->pointIndex(ptoff);
-        matrix(0, idx) = pos.x();
-        matrix(1, idx) = pos.y();
-        matrix(2, idx) = pos.z();
+        matrix(0, idx) = static_cast<double>(pos.x());
+        matrix(1, idx) = static_cast<double>(pos.y());
+        matrix(2, idx) = static_cast<double>(pos.z());
     }
-    return true;
+    // return matrix;
 }
 
-bool copy_position_to_eigen_rows(const GU_Detail * gdp, Eigen::MatrixXd & matrix ) 
+Eigen::MatrixXd copy_position_to_eigen_rows(const GU_Detail * gdp) 
 {
+    Eigen::MatrixXd matrix;
     matrix.resize(gdp->getNumPoints(), 3);
 
     GA_Offset ptoff;
@@ -49,11 +52,11 @@ bool copy_position_to_eigen_rows(const GU_Detail * gdp, Eigen::MatrixXd & matrix
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
         const GA_Index   idx = gdp->pointIndex(ptoff);
-        matrix(idx, 0) = pos.x();
-        matrix(idx, 1) = pos.y();
-        matrix(idx, 2) = pos.z();
+        matrix(idx, 0) = static_cast<double>(pos.x());
+        matrix(idx, 1) = static_cast<double>(pos.y());
+        matrix(idx, 2) = static_cast<double>(pos.z());
     }
-    return true;
+    return matrix;
 }
 
 class SOP_PCAlign : public SOP_Node
@@ -81,6 +84,10 @@ private:
     fpreal  PENALTYFACTOR(fpreal t) { return evalFloat("penaltyfactor", 0, t); }
     fpreal  MAXPENALTY(fpreal t)    { return evalFloat("maxpenalty", 0, t); }
     int     WEIGHTFUNC(fpreal t)    { return evalInt("reweightfunc", 0, t); }
+    int     DOSCALING(fpreal t)     { return evalInt("doscaling", 0, t); }
+    int     DOREFLECTIONS(fpreal t) { return evalInt("doreflections", 0, t); }
+
+    void    add_detail_array(const Eigen::MatrixXd & , const char* attr_name="rigid_xform");
 
 };
 
