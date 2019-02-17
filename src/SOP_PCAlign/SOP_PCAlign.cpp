@@ -232,16 +232,24 @@ SOP_PCAlign::cookMySop(OP_Context &context)
 
     if (align_method == ALIGN_METHOD::RIGID) 
     {
-        /// TODO: add confidence weights via point attribute.
-        Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
-        add_detail_array(t.matrix());
+        Eigen::Affine3d xform;
+        GA_Attribute * weights = gdp->findFloatTuple(GA_ATTRIB_POINT, "weight", 1);
+        if (!weights) {
+            xform = RigidMotionEstimator::point_to_point(source, target);
+        } else {
+            Eigen::VectorXd weights_mat;// = Eigen::VectorXd::Ones(gdp->getNumPoints());
+            copy_float_to_eigen(weights, weights_mat);
+            xform = RigidMotionEstimator::point_to_point(source, target, weights_mat);
+        }
+
+        add_detail_array(xform.matrix());
 
         if (apply_transform) 
         {
-            const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
-                                t(1,0), t(1,1), t(1,2), t(1,3),
-                                t(2,0), t(2,1), t(2,2), t(2,3),
-                                t(3,0), t(3,1), t(3,2), t(3,3));
+            const UT_Matrix4F m(xform(0,0), xform(0,1), xform(0,2), xform(0,3),
+                                xform(1,0), xform(1,1), xform(1,2), xform(1,3),
+                                xform(2,0), xform(2,1), xform(2,2), xform(2,3),
+                                xform(3,0), xform(3,1), xform(3,2), xform(3,3));
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) 
             {
@@ -344,7 +352,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
 
         nonrigid.gauss_transform(std::move(
         std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
-        
+
         cpd::NonrigidResult result = nonrigid.run(sourcet, targett);
 
         GA_Offset ptoff;

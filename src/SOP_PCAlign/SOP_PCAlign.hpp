@@ -24,6 +24,23 @@ enum ALIGN_METHOD {
         NONE,
     };
 
+void copy_float_to_eigen(const GA_Attribute * attr, Eigen::VectorXd & weightsV) 
+{
+    const GA_Detail & gdp = attr->getDetail();
+    GA_ROHandleF  weights_h(attr);
+
+    if (weights_h.isValid())
+    {   
+        weightsV.resize(gdp.getNumPoints());
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(&gdp, ptoff)
+        {
+            const float w = weights_h.get(ptoff);
+            const GA_Index idx = gdp.pointIndex(ptoff);
+            weightsV(idx) = static_cast<double>(w);
+        }
+    }
+}
 
 void copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix) 
 {
