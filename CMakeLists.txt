@@ -31,9 +31,10 @@ include(ExternalProject)
 ExternalProject_Add(Cpd
   SOURCE_DIR        "${CMAKE_SOURCE_DIR}/external/cpd"
   BINARY_DIR        "${CMAKE_SOURCE_DIR}/external/cpd/build"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND     ""
-  INSTALL_COMMAND   ""
+  INSTALL_DIR       "${CMAKE_SOURCE_DIR}/external/cpd/build"
+  CMAKE_ARGS        "-DCMAKE_PREFIX_PATH=${CMAKE_SOURCE_DIR}/external/cpd/build"
+  BUILD_COMMAND     $(MAKE)
+  INSTALL_COMMAND   $(MAKE) install
   TEST_COMMAND      ""
 )
 
