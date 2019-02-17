@@ -13,3 +13,6 @@
 [submodule "external/cpd"]
 	path = external/cpd
 	url = https://github.com/gadomski/cpd.git
+[submodule "external/fgt"]
+	path = external/fgt
+	url = https://github.com/gadomski/fgt.git
