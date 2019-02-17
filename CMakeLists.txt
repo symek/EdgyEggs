@@ -26,17 +26,33 @@ if (PCL_FOUND)
 	set(BUILD_WITH_INTEL_FGR TRUE)
 endif()
 
-# Cpd
-include(ExternalProject)
-ExternalProject_Add(Cpd
-  SOURCE_DIR        "${CMAKE_SOURCE_DIR}/external/cpd"
-  BINARY_DIR        "${CMAKE_BINARY_DIR}/external/cpd/build"
-  INSTALL_DIR       "${CMAKE_BINARY_DIR}/external/cpd/build"
-  CMAKE_ARGS        "-DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/cpd/build"
-  BUILD_COMMAND     $(MAKE)
-  INSTALL_COMMAND   $(MAKE) install
-  TEST_COMMAND      ""
-)
+# list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/cpd/lib/cmake/cpd")
+# 	list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/fgt/lib/cmake/fgt")
+
+# 	find_package(Fgt REQUIRED)
+# 	find_package(Cpd REQUIRED)
+# Fgt
+# include(ExternalProject)
+# ExternalProject_Add(Fgt
+#   SOURCE_DIR        "${CMAKE_SOURCE_DIR}/external/fgt"
+#   BINARY_DIR        "${CMAKE_BINARY_DIR}/external/fgt/build"
+#   INSTALL_DIR       "${CMAKE_BINARY_DIR}/external/install"
+#   CMAKE_ARGS        "-DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/install"
+#   BUILD_COMMAND     $(MAKE)
+#   INSTALL_COMMAND   $(MAKE) install
+#   TEST_COMMAND      ""
+# )
+
+# # Cpd
+# ExternalProject_Add(Cpd
+#   SOURCE_DIR        "${CMAKE_SOURCE_DIR}/external/cpd"
+#   BINARY_DIR        "${CMAKE_BINARY_DIR}/external/cpd/build"
+#   INSTALL_DIR       "${CMAKE_BINARY_DIR}/external/install"
+#   CMAKE_ARGS        "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/external/install -DWITH_FGT=ON  -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external/install"
+#   BUILD_COMMAND     $(MAKE)
+#   INSTALL_COMMAND   $(MAKE) install
+#   TEST_COMMAND      ""
+# )
 
 set (edgyeggs_version_major       0)
 set (edgyeggs_version_minor       2)
@@ -46,5 +62,5 @@ set (edgyeggs_version_patch       0)
 # add_subdirectory (src/SOP_IGLDiscreteGeo)
 # add_subdirectory (src/SOP_IGLUVproject)
 # add_subdirectory (src/SOP_ShapeOp)
-add_subdirectory (${CMAKE_SOURCE_DIR}/external/cpd)
+# add_subdirectory (${CMAKE_SOURCE_DIR}/external/cpd)
 add_subdirectory (src/SOP_PCAlign)

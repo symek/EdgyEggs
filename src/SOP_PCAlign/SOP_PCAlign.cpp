@@ -10,6 +10,7 @@
 // TODO: move it to Cmake
 #define BUILD_WITH_CPD 1
 #ifdef BUILD_WITH_CPD
+#include <cpd/gauss_transform_fgt.hpp>
 #include <cpd/rigid.hpp>
 #include <cpd/nonrigid.hpp>
 #endif
@@ -58,6 +59,7 @@ static PRM_Name names[] = {
     PRM_Name("doreflections", "Allow reflections"),
     PRM_Name("docorrespondance", "Compute correspondence"),
     PRM_Name("outliers",         "Outliers factor"),
+    PRM_Name("dotransform",       "Apply rigid transform"),
 };
 
 static PRM_Name  modelChoices[] =
@@ -109,6 +111,7 @@ SOP_PCAlign::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE,1, &names[12], PRMzeroDefaults), // allow reflections rigid CPD
     PRM_Template(PRM_TOGGLE,1, &names[13], PRMzeroDefaults), // compute correspondance rigid CPD
     PRM_Template(PRM_FLT_LOG, 1,&names[14], &outliersDefault),    // outliers CPD
+    PRM_Template(PRM_TOGGLE,1,  &names[15], PRMoneDefaults), //  Apply rigid transform
     PRM_Template(),
 };
 
@@ -221,6 +224,7 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     const int   allow_reflections = DOREFLECTIONS(t);    
     const int   allow_correspondance = evalInt("docorrespondance", 0, t);    
     const float outliers             = evalFloat("outliers", 0, t);
+    const int   apply_transform      = evalInt("dotransform", 0, t);    
    
     Vertices source, target;
     copy_position_to_eigen(gdp, source);
@@ -230,23 +234,22 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     {
         /// TODO: add confidence weights via point attribute.
         Eigen::Affine3d t = RigidMotionEstimator::point_to_point(source, target);
-        const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
-                            t(1,0), t(1,1), t(1,2), t(1,3),
-                            t(2,0), t(2,1), t(2,2), t(2,3),
-                            t(3,0), t(3,1), t(3,2), t(3,3));
-
         add_detail_array(t.matrix());
 
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) 
+        if (apply_transform) 
         {
-            UT_Vector3 pos = gdp->getPos3(ptoff);
-            pos *= m;
-            gdp->setPos3(ptoff, pos);
+            const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
+                                t(1,0), t(1,1), t(1,2), t(1,3),
+                                t(2,0), t(2,1), t(2,2), t(2,3),
+                                t(3,0), t(3,1), t(3,2), t(3,3));
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) 
+            {
+                UT_Vector3 pos = gdp->getPos3(ptoff);
+                pos *= m;
+                gdp->setPos3(ptoff, pos);
+            }
         }
-
-        gdp->getP()->bumpDataId();
-        return error();
 
     }
     else if (align_method == ALIGN_METHOD::SPARSE_ICP) 
@@ -271,7 +274,6 @@ SOP_PCAlign::cookMySop(OP_Context &context)
             const UT_Vector3 pos(source(0, i), source(1, i), source(2, i));
             gdp->setPos3(ptoff, pos);
         }
-
     } 
     else if (align_method == ALIGN_METHOD::REWEIGHTED_ICP) 
     {
@@ -309,16 +311,22 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         rigid.max_iterations(SYSmin(max_iterations,1));
         rigid.tolerance(stop_critera);
 
+        rigid.gauss_transform(std::move(
+        std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
+
         cpd::RigidResult result = rigid.run(sourcet, targett);
 
         add_detail_array(result.matrix());
 
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff)
-        {
-            const GA_Index i = gdp->pointIndex(ptoff);
-            const UT_Vector3 pos(result.points(i, 0), result.points(i, 1), result.points(i, 2));
-            gdp->setPos3(ptoff, pos);
+        if (apply_transform) 
+        {   
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff)
+            {
+                const GA_Index i = gdp->pointIndex(ptoff);
+                const UT_Vector3 pos(result.points(i, 0), result.points(i, 1), result.points(i, 2));
+                gdp->setPos3(ptoff, pos);
+            }
         }
     }
     else if (align_method == ALIGN_METHOD::NONRIGID_CPD) 
@@ -334,7 +342,11 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         nonrigid.max_iterations(SYSmin(max_iterations,1));
         nonrigid.tolerance(stop_critera);
 
+        nonrigid.gauss_transform(std::move(
+        std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
+        
         cpd::NonrigidResult result = nonrigid.run(sourcet, targett);
+
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff)
         {
@@ -349,10 +361,12 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     // Intel FGR relies on PCL, which is to big to add as submodule
     // so we need this switch in case PCL was not found
     #ifdef BUILD_WITH_INTEL_FGR
-    else if (align_method == ALIGN_METHOD::INTEL_FGR) {
+    else if (align_method == ALIGN_METHOD::INTEL_FGR) 
+    {
         FastGlobalRegistration ifgr; 
         std::vector<const GU_Detail*> fgr_sources{2};
         fgr_sources[0] = gdp; fgr_sources[1] = target_gdp;
+
         for (const auto geo: fgr_sources) 
         {
             // these are shared_ptr:
@@ -366,9 +380,11 @@ SOP_PCAlign::cookMySop(OP_Context &context)
 
             std::vector<Eigen::Vector3f> positions(points->size());
             std::vector<Eigen::VectorXf> features(fpfhs->size());
+
             // both are vectors of eigen Vectors, should be easy to
             // cheat and swap buffers...    
-            for (int i=0; i<points->size(); ++i) {
+            for (int i=0; i<points->size(); ++i) 
+            {
                 const pcl::PointXYZ & point        = points->points[i];
                 const pcl::FPFHSignature33 & feat  = fpfhs->points[i];
                 const Eigen::Vector3f epoint(point.x, point.y, point.z);
@@ -386,23 +402,24 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         ifgr.NormalizePoints();
         ifgr.AdvancedMatching();
         ifgr.OptimizePairwise(true, ITERATION_NUMBER); 
-        Eigen::Matrix4f t = ifgr.GetTrans();
 
-        const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
-                            t(1,0), t(1,1), t(1,2), t(1,3),
-                            t(2,0), t(2,1), t(2,2), t(2,3),
-                            t(3,0), t(3,1), t(3,2), t(3,3));
+        const Eigen::Matrix4f t = ifgr.GetTrans();
+        const Eigen::MatrixXd xform = t.cast<double>();
+        add_detail_array(xform);
 
-        GA_RWHandleM4  xform_h(gdp->addFloatTuple(GA_ATTRIB_DETAIL, "transform", 16));
-        xform_h.set(GA_Offset(0), m);
-
+        if (apply_transform)
         {
+            const UT_Matrix4F m(t(0,0), t(0,1), t(0,2), t(0,3),
+                                t(1,0), t(1,1), t(1,2), t(1,3),
+                                t(2,0), t(2,1), t(2,2), t(2,3),
+                                t(3,0), t(3,1), t(3,2), t(3,3));
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 UT_Vector3 pos = gdp->getPos3(ptoff);
                 pos *= m;
                 gdp->setPos3(ptoff, pos);
             }
+        
         }
 
         // GA_RWHandleV3 norm_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "N", 3));
@@ -412,10 +429,6 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         //     const UT_Vector3 normal(n.normal_x, n.normal_y, n.normal_z);
         //     norm_h.set(ptoff, normal);
         // }
-    
-
-        gdp->getP()->bumpDataId();
-        return error();
     }
     #endif
 

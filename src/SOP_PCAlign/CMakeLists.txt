@@ -6,7 +6,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cpd/include)
 
 # Add a library with two source files.
 set( library_name SOP_PCAlign )
-# add_definitions(-DEIGEN_MALLOC_ALREADY_ALIGNED)
+
 # Main sources
 list(APPEND pcalign_sources
     SOP_PCAlign.cpp
@@ -27,16 +27,35 @@ endif()
 add_library( ${library_name} SHARED
    ${pcalign_sources}
 )
+option(BUILD_WITH_CPD "Build with CPD" OFF)
 
-add_dependencies(${library_name} Cpd)
+IF ( BUILD_WITH_CPD )
+	message(STATUS "Building with CPD and FGT.")
+	message(WARNING ${CMAKE_SOURCE_DIR}/install)
 
-link_directories(${CMAKE_BINARY_DIR}/external/cpd)
+	# set (BUILD_WITH_CPD TRUE)
+
+	list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/cpd/lib/cmake/cpd")
+	list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/fgt/lib/cmake/fgt")
+
+	find_package(Fgt REQUIRED)
+	find_package(Cpd REQUIRED)
+
+	# add_dependencies(${library_name} Fgt)
+	# add_dependencies(${library_name} Cpd)
+	add_definitions(-DBUILD_WITH_CPD)
+endif()
+
+
+
+if ( BUILD_WITH_CPD )
+	link_directories(${CMAKE_SOURCE_DIR}/install/cpd/lib)
+	link_directories(${CMAKE_SOURCE_DIR}/install/fgt/lib)
+	target_link_libraries(${library_name}  Cpd::Library-C++)
+endif()
 
 # Link against the Houdini libraries, and add required include directories and compile definitions.
-target_link_libraries( ${library_name} Houdini )
-#FIXME
-target_link_libraries( ${library_name} ${CMAKE_BINARY_DIR}/external/cpd/libcpd.dylib )
-# target_link_libraries( ${library_name} ${CMAKE_SOURCE_DIR}/external/cpd/build/libcpd.dylib )
+target_link_libraries( ${library_name}  Houdini )
 
 if (BUILD_WITH_INTEL_FGR)
 	target_link_libraries( ${library_name} ${PCL_COMMON_LIBRARIES} ${PCL_FEATURES_LIBRARIES})
