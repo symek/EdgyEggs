@@ -48,14 +48,18 @@ El Topo - Robust Topological Operations for Dynamic Explicit Surfaces
 		url = {http://link.aip.org/link/?SCE/31/2472/1},
 		doi = {10.1137/080737617}
 		}
-CPD - C++ implementation of the Coherent Point Drift point set registration algorithm. http://www.gadom.ski/cpd/
-[4]: Myronenko A., Song X. (2010): "Point-Set Registration: Coherent Point Drift", IEEE Trans. on Pattern Analysis and Machine Intelligence, vol. 32, issue 12, pp. 2262-2275, 
+CPD - C++ implementation of the Coherent Point Drift point set registration algorithm. 
+[4]: http://www.gadom.ski/cpd/
+	```Myronenko A., Song X. (2010): "Point-Set Registration: Coherent Point Drift", IEEE Trans. 
+	on Pattern Analysis and Machine Intelligence, vol. 32, issue 12, pp. 2262-2275, ```
 
 Fast Global Registration
-[5]:  Qian-Yi Zhou, Jaesik Park, and Vladlen Koltun, ECCV 2016
+[5]:https://github.com/IntelVCL/FastGlobalRegistration
+	```Qian-Yi Zhou, Jaesik Park, and Vladlen Koltun, ECCV 2016```
 
 Sparse Iterative Closest Point (SparseICP)
-[6]: C++ implementation for the paper: 
+[6]:https://github.com/OpenGP/sparseicp
+	C++ implementation for the paper: 
 
     "Sparse Iterative Closest Point"
     Sofien Bouaziz, Andrea Tagliasacchi, Mark Pauly
