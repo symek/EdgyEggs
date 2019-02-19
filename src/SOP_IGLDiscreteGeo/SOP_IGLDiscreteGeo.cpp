@@ -5,6 +5,8 @@
 #include <igl/grad.h>
 #include <igl/parula.h>
 #include <igl/eigs.h>
+#include <igl/exact_geodesic.h>
+
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -22,6 +24,8 @@
 
 #include "../converters.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
+#include "geodesicdistance.hpp"
+
 
 using namespace SOP_IGL;
 
@@ -30,22 +34,23 @@ newSopOperator(OP_OperatorTable *table)
 {
     table->addOperator(new OP_Operator(
         "igldiscretegeo",
-        "EE IGLDiscreteGeometry",
+        "EE IGL Discrete Geometry",
         SOP_IGLDiscreteGeometry::myConstructor,
         SOP_IGLDiscreteGeometry::myTemplateList,
+        1,
         2,
-        3,
         0));
 }
 
 
 static PRM_Name names[] = {
-    PRM_Name("curvature",          "Add Principal Curvature"),
-    PRM_Name("false_curve_colors", "Add False Curve Colors"),
-    PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
+    PRM_Name("curvature",          "Principal Curvature"),
+    PRM_Name("false_curve_colors", "False Curve Colors"),
+    PRM_Name("grad_attrib",        "Gradient of Attribute (scalar)"),    
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
-    PRM_Name("laplacian",          "Laplacian (Smoothing)"),
-    PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
+    PRM_Name("laplacian",          "Laplacian (smoothing/sharpening)"),
+    PRM_Name("eigenvectors",       "Eigen Decomposition "),
+    PRM_Name("geodesicdistance",   "Geodesic distance"),
 };
 
 static PRM_Range  laplaceRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
@@ -58,6 +63,7 @@ SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_STRING, 1, &names[3], 0),
     PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
     PRM_Template(PRM_INT_J , 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_TOGGLE, 1, &names[6], PRMzeroDefaults),
     PRM_Template(),
 };
 
@@ -221,7 +227,7 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
     duplicateSource(0, context);
 
     // Copy to eigen.
-    gdp->convex(); // only triangles for now.
+    gdp->convex(); // only triangles for now, but point count will match
     uint numPoints = gdp->getNumPoints();
     uint numPrims  = gdp->getNumPrimitives();
     Eigen::MatrixXd V(numPoints, 3); // points
@@ -358,9 +364,61 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
 
     #endif
 
+    if (evalInt("geodesicdistance", 0, t)) 
+    {
+        const GA_Attribute * anchors_attr = gdp->findFloatTuple(GA_ATTRIB_POINT, "anchors", 1);
+        if (!anchors_attr) 
+        {
+            addWarning(SOP_MESSAGE, "Create float attribute 'anchors' \
+                and set 1 for points in question.");
+            return error();
+        }
 
+        GA_ROHandleF  anchors_h(anchors_attr);
 
-    
+        int anchor_index = -1;
+        if (anchors_h.isValid()) 
+        {
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) 
+            {
+                const float is_anchor = anchors_h.get(ptoff);
+                if (is_anchor > 0.0) 
+                {
+                    const GA_Index i = gdp->pointIndex(ptoff);
+                    anchor_index = static_cast<int>(i);
+                }
+            }
+        }
+
+        if (anchor_index >= 0) 
+        {
+            Eigen::VectorXd distances;
+            if (!SOP_IGL::compute_exact_geodesic_distance(V, F, anchor_index, distances)) {
+                addWarning(SOP_MESSAGE, "Can't compute geodesic distance.");
+                return error();
+            }
+
+            GA_Attribute * distance_attr = gdp->addFloatTuple(GA_ATTRIB_POINT, "distance", 1);
+            GA_RWHandleF distance_h(distance_attr);
+            if (distance_h.isInvalid()) {
+                addWarning(SOP_MESSAGE, "Can't add distance attribute.");
+                return error();
+            }
+
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff)
+            {
+                const GA_Index i = gdp->pointIndex(ptoff);
+                const double distance = distances(i);
+                distance_h.set(ptoff, (float)distance);
+
+            }
+
+        }
+
+    }
+
 
     gdp->getP()->bumpDataId();
     return error();
