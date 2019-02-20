@@ -8,6 +8,8 @@ set( library_name SOP_IGLDiscreteGeometry )
 add_library( ${library_name} SHARED
     ../converters.cpp
     ../converters.hpp
+    discretegeometry.hpp
+    discretegeometry.cpp
     SOP_IGLDiscreteGeo.cpp
     SOP_IGLDiscreteGeo.hpp
 )
