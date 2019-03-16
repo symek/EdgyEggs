@@ -2,7 +2,14 @@
 cmake_minimum_required( VERSION 3.4 )
 project( edgyeggs )
 
+option(WITH_IGL     "Build with LIBIGL SOPs" OFF)
+option(WITH_SHAPEOP "Build ShapeOp SOP" OFF)
+option(WITH_PCALIGN "Build PCAlign SOP" OFF)
+option(WITH_ELTOPO  "Build Eltopo SOP" ON)
+
+list( APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
 list( APPEND CMAKE_PREFIX_PATH "$ENV{HT}/cmake")
+
 find_package( Houdini REQUIRED )
 message (STATUS "Houdini HDK: ${Houdini_VERSION}")
 
@@ -19,12 +26,15 @@ endif (CMAKE_BUILD_TYPE MATCHES DEBUG)
 
 
 # PCL time
-find_package(PCL 1.3 REQUIRED COMPONENTS common features)
-if (PCL_FOUND)
-    message(STATUS "PCL found. Building PCAlign with Intel Fast Global Registration.")
-	add_definitions(-DBUILD_WITH_INTEL_FGR)
-	set(BUILD_WITH_INTEL_FGR TRUE)
+if (WITH_PCALIGN)
+    find_package(PCL 1.3 REQUIRED COMPONENTS common features)
+    if (PCL_FOUND)
+        message(STATUS "PCL found. Building PCAlign SOP with Intel Fast Global Registration.")
+        add_definitions(-DBUILD_WITH_INTEL_FGR)
+        set(BUILD_WITH_INTEL_FGR TRUE)
+    endif()
 endif()
+
 
 # list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/cpd/lib/cmake/cpd")
 # 	list( APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/install/fgt/lib/cmake/fgt")
@@ -58,9 +68,24 @@ set (edgyeggs_version_major       0)
 set (edgyeggs_version_minor       2)
 set (edgyeggs_version_patch       0)
 
-# add_subdirectory (src/SOP_IGLDeform)
-# add_subdirectory (src/SOP_IGLDiscreteGeo)
-# add_subdirectory (src/SOP_IGLUVproject)
-# add_subdirectory (src/SOP_ShapeOp)
-# add_subdirectory (${CMAKE_SOURCE_DIR}/external/cpd)
+if(WITH_IGL)
+    message(STATUS "Building with LIBIGL nodes")
+    add_subdirectory (src/SOP_IGLDeform)
+    add_subdirectory (src/SOP_IGLDiscreteGeo)
+    add_subdirectory (src/SOP_IGLUVproject)
+endif()
+
+if(WITH_SHAPEOP)
+    message(STATUS "Building SOP_ShapeOp")
+    add_subdirectory (src/SOP_ShapeOp)
+endif()
+
+message(STATUS "Building SOP_PCAlign")
 add_subdirectory (src/SOP_PCAlign)
+
+if(WITH_ELTOPO)
+    message(STATUS "Building SOP_Eltopo")
+    add_subdirectory (src/SOP_Eltopo)
+endif()
+# add_subdirectory (src/SOP_GUItest)
+
