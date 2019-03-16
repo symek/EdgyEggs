@@ -11,7 +11,7 @@
 #include <eltopo.h>
 #include <surftrack.h>
 #include <dynamicsurface.h>
-#include <vec.h>
+#include "vec.h"
 #include <subdivisionscheme.h>
 
 #include <time.h>
