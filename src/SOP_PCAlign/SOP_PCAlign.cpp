@@ -8,9 +8,10 @@
 
 #include <ICP.h>
 // TODO: move it to Cmake
-#define BUILD_WITH_CPD 1
+//#define BUILD_WITH_CPD 1
 #ifdef BUILD_WITH_CPD
 #include <cpd/gauss_transform_fgt.hpp>
+#include <cpd/gauss_transform.hpp>
 #include <cpd/rigid.hpp>
 #include <cpd/nonrigid.hpp>
 #endif
@@ -115,47 +116,60 @@ SOP_PCAlign::myTemplateList[] = {
     PRM_Template(),
 };
 
+
 bool
 SOP_PCAlign::updateParmsFlags()
 {
     bool changed         = SOP_Node::updateParmsFlags();
-    #if 0
     const bool method    = evalInt("alignmethod", 0, 0);
     const int usepenalty = evalInt("usepenalty", 0, 0);
 
-    const std::vector<std::string> sicp_parms{"maxiterations", "maxouteriter", 
+    using ParmNameVector = std::vector<const std::string>;
+
+    const ParmNameVector all_parms
+    {
+        "maxiterations","maxouteriter","maxinneriter", "stopcritera",  
+        "usepenalty", "pnorm", "penaltyweight", "penaltyfactor",
+        "maxpenalty", "reweightfunc", "doscaling", "doreflections", 
+        "docorrespondance", "outliers", "dotransform"
+    };
+
+    const ParmNameVector sicp_parms{"maxiterations", "maxouteriter", 
         "maxinneriter", "stopcritera", "usepenalty"};
-    const std::vector<std::string> penalty_parms{"pnorm", "penaltyweight", 
+
+    const ParmNameVector penalty_parms{"pnorm", "penaltyweight", 
         "penaltyfactor", "maxpenalty"};
 
-    const std::vector<std::string> reweighted_parms{"maxiterations", "maxouteriter", 
+    const ParmNameVector reweighted_parms{"maxiterations", "maxouteriter", 
        "pnorm", "maxouteriter", "reweightfunc", "stopcritera"};
 
     if (method == ALIGN_METHOD::RIGID) {
-        for(const auto & parm: sicp_parms) 
-            setVisibleState(parm.c_str(), false);
-        for(const auto & parm: penalty_parms) 
-            setVisibleState(parm.c_str(), false);
-        
+        for(const auto & parm: all_parms) 
+            changed |= enableParm(parm.c_str(), 0);
     } 
     else if (method == ALIGN_METHOD::SPARSE_ICP) 
     {
-       for(const auto & parm: sicp_parms) 
-            setVisibleState(parm.c_str(), true);
+        for(const auto & parm: all_parms) 
+            changed |= enableParm(parm.c_str(), 0);
+        for(const auto & parm: sicp_parms) 
+           changed |= enableParm(parm.c_str(), 1);
 
-        if (usepenalty == 1) 
-           for(const auto & parm: penalty_parms) 
-                setVisibleState(parm.c_str(), true);
-        else 
-             for(const auto & parm: penalty_parms) 
-                setVisibleState(parm.c_str(), false);
-    } else if (method == ALIGN_METHOD::REWEIGHTED_ICP)
-    {
-        for(const auto & parm: reweighted_parms) 
-                setVisibleState(parm.c_str(), true);
-    }
+    } 
+    // else if (method == ALIGN_METHOD::REWEIGHTED_ICP)
 
-    // changed |= enableParm("copcolor", use_path);
+    //     if (usepenalty == 1) 
+    //        for(const auto & parm: penalty_parms) 
+    //             setVisibleState(parm.c_str(), true);
+    //     else 
+    //          for(const auto & parm: penalty_parms) 
+    //             setVisibleState(parm.c_str(), false);
+    // } else if (method == ALIGN_METHOD::REWEIGHTED_ICP)
+    // {
+    //     for(const auto & parm: reweighted_parms) 
+    //             setVisibleState(parm.c_str(), true);
+    // }
+
+    #if 0
     #endif
     return changed;
 }
@@ -230,26 +244,45 @@ SOP_PCAlign::cookMySop(OP_Context &context)
     copy_position_to_eigen(gdp, source);
     copy_position_to_eigen(target_gdp, target);
 
+    UT_ASSERT(gdp->getNumPoints() == source.cols());
+    UT_ASSERT(target_gdp->getNumPoints() == target.cols());
+    UT_ASSERT(source.cols() == target.cols());
+
     if (align_method == ALIGN_METHOD::RIGID) 
     {
-        Eigen::Affine3d xform;
-        GA_Attribute * weights = gdp->findFloatTuple(GA_ATTRIB_POINT, "weight", 1);
-        if (!weights) {
-            xform = RigidMotionEstimator::point_to_point(source, target);
-        } else {
-            Eigen::VectorXd weights_mat;// = Eigen::VectorXd::Ones(gdp->getNumPoints());
-            copy_float_to_eigen(weights, weights_mat);
-            xform = RigidMotionEstimator::point_to_point(source, target, weights_mat);
+        Eigen::VectorXd weights;
+        GA_Attribute * weights_attr = gdp->findFloatTuple(GA_ATTRIB_POINT, "confidence_weight", 1);
+        if (!weights_attr) {
+            weights = Eigen::VectorXd::Ones(gdp->getNumPoints());
+        }
+        else {
+            if(!copy_float_to_eigen(weights_attr, weights)) {
+                return error();
+            }
         }
 
-        add_detail_array(xform.matrix());
+        UT_ASSERT(weights.rows() == gdp->getNumPoints());
+        const Eigen::Affine3d xform = RigidMotionEstimator::point_to_point(source, target, weights);
+
+        if(!xform.matrix().allFinite()) {
+            addError(SOP_MESSAGE, "Can't compute rigid motion estimator.");
+            return error();
+        }
+
+        GA_Attribute * xform_attr = gdp->addFloatTuple(GA_ATTRIB_DETAIL, "rigid_xform", 16);
+        GA_RWHandleM4 xform_h(xform_attr);
+
+        const UT_Matrix4F m(xform(0,0), xform(1,0), xform(2,0), xform(3,0),
+                            xform(0,1), xform(1,1), xform(2,1), xform(3,1),
+                            xform(0,2), xform(1,2), xform(2,2), xform(3,2),
+                            xform(0,3), xform(1,3), xform(2,3), xform(3,3));
+        
+        if (xform_h.isValid()) {
+            xform_h.set(0, m);
+        }
 
         if (apply_transform) 
         {
-            const UT_Matrix4F m(xform(0,0), xform(0,1), xform(0,2), xform(0,3),
-                                xform(1,0), xform(1,1), xform(1,2), xform(1,3),
-                                xform(2,0), xform(2,1), xform(2,2), xform(2,3),
-                                xform(3,0), xform(3,1), xform(3,2), xform(3,3));
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) 
             {
@@ -258,6 +291,9 @@ SOP_PCAlign::cookMySop(OP_Context &context)
                 gdp->setPos3(ptoff, pos);
             }
         }
+
+        gdp->getP()->bumpDataId();
+        return error();
 
     }
     else if (align_method == ALIGN_METHOD::SPARSE_ICP) 
@@ -319,8 +355,8 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         rigid.max_iterations(SYSmin(max_iterations,1));
         rigid.tolerance(stop_critera);
 
-        rigid.gauss_transform(std::move(
-        std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
+        // rigid.gauss_transform(std::move(
+        // std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
 
         cpd::RigidResult result = rigid.run(sourcet, targett);
 
@@ -350,8 +386,8 @@ SOP_PCAlign::cookMySop(OP_Context &context)
         nonrigid.max_iterations(SYSmin(max_iterations,1));
         nonrigid.tolerance(stop_critera);
 
-        nonrigid.gauss_transform(std::move(
-        std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
+        // nonrigid.gauss_transform(std::move(
+        // std::unique_ptr<cpd::GaussTransform>(new cpd::GaussTransformFgt())));
 
         cpd::NonrigidResult result = nonrigid.run(sourcet, targett);
 

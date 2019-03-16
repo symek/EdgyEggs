@@ -4,7 +4,7 @@
 namespace pcalign {
 
 typedef double Scalar;
-typedef Eigen::Matrix<Scalar, 3, Eigen::Dynamic> Vertices;
+typedef Eigen::Matrix<Scalar, 3, Eigen::Dynamic, Eigen::ColMajor> Vertices;
 
 enum ALIGN_METHOD {
     RIGID,
@@ -24,14 +24,15 @@ enum ALIGN_METHOD {
         NONE,
     };
 
-void copy_float_to_eigen(const GA_Attribute * attr, Eigen::VectorXd & weightsV) 
+bool copy_float_to_eigen(const GA_Attribute * attr, Eigen::VectorXd & weightsV) 
 {
     const GA_Detail & gdp = attr->getDetail();
     GA_ROHandleF  weights_h(attr);
 
     if (weights_h.isValid())
     {   
-        weightsV.resize(gdp.getNumPoints());
+        weightsV.conservativeResize(gdp.getNumPoints());
+        UT_ASSERT(weightsV.rows() == gdp.getNumPoints());
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(&gdp, ptoff)
         {
@@ -39,22 +40,24 @@ void copy_float_to_eigen(const GA_Attribute * attr, Eigen::VectorXd & weightsV)
             const GA_Index idx = gdp.pointIndex(ptoff);
             weightsV(idx) = static_cast<double>(w);
         }
+        return true;
     }
+    return false;
 }
 
 void copy_position_to_eigen(const GU_Detail * gdp, Vertices & matrix) 
 {
     // Vertices matrix;
-    matrix.resize(Eigen::NoChange, gdp->getNumPoints());
+    matrix.conservativeResize(Eigen::NoChange, gdp->getNumPoints());
 
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(gdp, ptoff)
     {
         const UT_Vector3 pos = gdp->getPos3(ptoff);
         const GA_Index   idx = gdp->pointIndex(ptoff);
-        matrix(0, idx) = static_cast<double>(pos.x());
-        matrix(1, idx) = static_cast<double>(pos.y());
-        matrix(2, idx) = static_cast<double>(pos.z());
+        matrix(0, idx) = pos.x();
+        matrix(1, idx) = pos.y();
+        matrix(2, idx) = pos.z();
     }
     // return matrix;
 }
@@ -90,12 +93,12 @@ protected:
     virtual OP_ERROR         cookMySop(OP_Context &context) override;
 private:
 
-    int     ALIGNMETHOD()         { return evalInt("alignmethod", 0, 0); }
-    int     MAXITER(fpreal t)     { return evalInt("maxiterations", 0, t); }
-    int     MAXOUTERITER(fpreal t)   { return evalInt("maxouteriter", 0, t); }
-    int     MAXINNERITER(fpreal t)   { return evalInt("maxinneriter", 0, t); }
-    fpreal  STOPCRITERIA(fpreal t)   { return evalFloat("stopcritera", 0, t); }
-    int     USEPENALTY(fpreal t)     { return evalInt("usepenalty", 0, t); }
+    int     ALIGNMETHOD()           { return evalInt("alignmethod", 0, 0); }
+    int     MAXITER(fpreal t)       { return evalInt("maxiterations", 0, t); }
+    int     MAXOUTERITER(fpreal t)  { return evalInt("maxouteriter", 0, t); }
+    int     MAXINNERITER(fpreal t)  { return evalInt("maxinneriter", 0, t); }
+    fpreal  STOPCRITERIA(fpreal t)  { return evalFloat("stopcritera", 0, t); }
+    int     USEPENALTY(fpreal t)    { return evalInt("usepenalty", 0, t); }
     fpreal  PNORM(fpreal t)         { return evalFloat("pnorm", 0, t); }
     fpreal  PENALTYWEIGHT(fpreal t) { return evalFloat("penaltyweight", 0, t); }
     fpreal  PENALTYFACTOR(fpreal t) { return evalFloat("penaltyfactor", 0, t); }
